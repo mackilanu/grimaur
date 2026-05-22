@@ -63,7 +63,7 @@ jobs:
         env:
           DEBUG: "1"
         run: |
-          ./grimaur fetch --use-ssh --shallow --repo-url https://github.com/h8d13/archinstoo 2>&1 | tee /tmp/ssh.log || true
+          ./grimaur fetch archinstoo --use-ssh --shallow --repo-url https://github.com/h8d13/archinstoo 2>&1 | tee /tmp/ssh.log || true
           grep -qF 'ssh://git@github.com/h8d13/archinstoo' /tmp/ssh.log \
             || { echo "FAIL: --use-ssh did not rewrite URL to ssh://"; exit 1; }
 
