@@ -349,7 +349,6 @@ def ensure_clone(
                     dest_root,
                     refresh=False,
                     force_reclone=True,
-                    repo_url=repo_url,
                 )
         return package_dir
 
