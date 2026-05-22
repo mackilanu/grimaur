@@ -620,8 +620,11 @@ def invalidate_installed_cache() -> None:
 def installed_package_set() -> set[str]:
     global _INSTALLED_CACHE
     if _INSTALLED_CACHE is None:
-        output = run_command(["pacman", "-Qq"], capture=True)
-        _INSTALLED_CACHE = set(str(output).split())
+        if shutil.which("pacman") is None:
+            _INSTALLED_CACHE = set()
+        else:
+            output = run_command(["pacman", "-Qq"], capture=True)
+            _INSTALLED_CACHE = set(str(output).split())
     return _INSTALLED_CACHE
 
 
