@@ -41,13 +41,6 @@ jobs:
       - run: ./grimaur --git-mirror update --noconfirm
       - run: ./grimaur inspect $PKG --target PKGBUILD
 
-      - name: Test --use-ssh rewrites URLs (clone fails, but rewrite worked)
-        env:
-          DEBUG: "1"
-        run: |
-          sudo -u builder ./grimaur fetch --use-ssh --shallow --repo-url https://github.com/h8d13/archinstoo $PKG 2>&1 | tee /tmp/ssh.log || true
-          cat /tmp/ssh.log
-
       - name: Search unbounded (timed)
         run: time ./grimaur search $PATTERN --no-interactive
 
@@ -56,6 +49,13 @@ jobs:
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
           chown -R builder:builder .
+
+      - name: Test --use-ssh rewrites URLs (clone fails, but rewrite worked)
+        env:
+          DEBUG: "1"
+        run: |
+          sudo -u builder ./grimaur fetch --use-ssh --shallow --repo-url https://github.com/h8d13/archinstoo $PKG 2>&1 | tee /tmp/ssh.log || true
+          cat /tmp/ssh.log
 
       - name: Install via grimaur (as builder)
         run: sudo -u builder ./grimaur install $PKG --noconfirm
