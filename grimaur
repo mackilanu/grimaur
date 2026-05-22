@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""grimaur: Fetch, inspect, search, list, update, and install Arch Linux AUR packages.
+"""grimaur: Fetch, inspect, search, list, update, and install, remove Arch Linux AUR packages.
 
 By default this tool queries the official AUR RPC API and automatically falls back to
 the git mirror at https://github.com/archlinux/aur.git when the endpoint is
