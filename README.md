@@ -11,8 +11,6 @@ API and **automatically falls back to the official git mirror when the endpoint 
 > [!TIP]
 > When the AUR is down, run commands with `--git-mirror` 
 
-For example: `grimaur <package> --git-mirror` to bypass the RPC entirely, this ensures higher uptimes.
-
 ## Install
 
 ### Deps
@@ -31,6 +29,7 @@ For example: `grimaur <package> --git-mirror` to bypass the RPC entirely, this e
    cd grimaur-git
    makepkg -si
    ```
+
 ### From Python directly
    ```bash
    git clone https://github.com/ryk4rd/grimaur
