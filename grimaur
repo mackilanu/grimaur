@@ -29,7 +29,7 @@ ASCII: Donovan Baker
 
 ##  SPDX-License-Identifier: MIT */
 
-Requirements: git, makepkg, pacman, and sudo/doas/run0/su.
+Requirements: git, base-devel, pacman, and sudo/doas/run0/su.
 """
 
 import argparse
