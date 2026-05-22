@@ -3,7 +3,8 @@ pkgver=r126.gbc37b65
 pkgrel=1
 pkgdesc="Lightweight AUR helper that uses the official AUR git mirror"
 arch=('any')
-url="https://github.com/mackilanu/grimaur"
+url="https://github.com/h8d13/grimaur3"
+# if you merge change back to https://github.com/mackilanu/grimaur
 license=('MIT')
 depends=('python' 'git')
 provides=('grimaur')
