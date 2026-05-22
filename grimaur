@@ -255,21 +255,6 @@ def aur_rpc_search_results(pattern: str) -> list[dict]:
     return [entry for entry in results if isinstance(entry, dict)]
 
 
-def aur_rpc_suggest(prefix: str) -> list[str]:
-    try:
-        data = aur_rpc_call({"type": "suggest", "arg": prefix})
-    except AurGitError:
-        return []
-    results = data.get("results")
-    if not isinstance(results, list):
-        return []
-    suggestions: list[str] = []
-    for entry in results:
-        if isinstance(entry, str):
-            suggestions.append(entry)
-    return suggestions
-
-
 def run_command(
     cmd: Sequence[str],
     *,
@@ -1706,60 +1691,6 @@ def interactive_select_results(results: Sequence[SearchResult]) -> list[SearchRe
         return selected
 
 
-def complete_packages(prefix: str, limit: int) -> list[str]:
-    if USE_AUR_RPC:
-        names = complete_packages_rpc(prefix, limit)
-        if names or USE_AUR_RPC:
-            return names
-    return complete_packages_git(prefix, limit)
-
-
-def complete_packages_git(prefix: str, limit: int) -> list[str]:
-    prefix = prefix.strip()
-    if not prefix:
-        return []
-    pattern = f"refs/heads/{prefix}*"
-    try:
-        output = run_command(
-            ["git", "ls-remote", "--heads", get_aur_remote(), pattern],
-            capture=True,
-        )
-    except AurGitError:
-        return []
-    names: list[str] = []
-    for line in str(output).splitlines():
-        if not line.strip():
-            continue
-        parts = line.split()
-        if len(parts) != 2:
-            continue
-        ref = parts[1]
-        name = ref.split("/")[-1]
-        names.append(name)
-        if len(names) >= limit:
-            break
-    return names
-
-
-def complete_packages_rpc(prefix: str, limit: int) -> list[str]:
-    prefix = prefix.strip()
-    if not prefix:
-        return []
-    suggestions = aur_rpc_suggest(prefix)
-    names: list[str] = []
-    seen: set[str] = set()
-    for suggestion in suggestions:
-        if not suggestion.startswith(prefix):
-            continue
-        if suggestion in seen:
-            continue
-        seen.add(suggestion)
-        names.append(suggestion)
-        if len(names) >= limit:
-            break
-    return names
-
-
 def inspect_package(
     package: str,
     dest_root: Path,
@@ -2002,16 +1933,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip confirmation prompts when installing from search",
     )
 
-    complete_parser = subparsers.add_parser("complete", help=argparse.SUPPRESS)
-    complete_parser.add_argument("subcommand", choices=["install"])
-    complete_parser.add_argument("prefix", nargs="?", default="")
-    complete_parser.add_argument(
-        "--limit",
-        type=int,
-        default=64,
-        help="Limit number of completion candidates (default: 64)",
-    )
-
     inspect_parser = subparsers.add_parser(
         "inspect", help="Show PKGBUILD or dependency information"
     )
@@ -2044,7 +1965,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         "update",
         "search",
         "inspect",
-        "complete",
         "list",
     }
     # Hoist global flags so they can appear after the subcommand too
@@ -2230,15 +2150,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                     exit_code = 1
                     print(f"error installing {item.name}: {exc}", file=sys.stderr)
             return exit_code
-        elif args.command == "complete":
-            prefix = args.prefix
-            limit = max(1, args.limit)
-            names: list[str] = []
-            if args.subcommand == "install":
-                names = complete_packages(prefix, limit)
-            for name in names:
-                print(name)
-            return 0
         elif args.command == "inspect":
             inspect_package(
                 args.package,

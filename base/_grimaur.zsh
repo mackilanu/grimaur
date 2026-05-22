@@ -33,7 +33,6 @@ _grimaur() {
                 'search:Search packages via the configured backend'
                 'inspect:Show PKGBUILD or dependency information'
                 'list:List installed foreign (AUR) packages'
-                'complete:Shell completion helper'
             )
             _describe -t commands 'grimaur command' commands
             ;;
@@ -44,14 +43,14 @@ _grimaur() {
                         $global_opts \
                         '--force[Reclone even if directory exists]' \
                         '--repo-url[Clone from custom Git URL]:url:' \
-                        '1:package:_grimaur_aur_packages'
+                        '1:package:'
                     ;;
                 install)
                     _arguments \
                         $global_opts \
                         '--noconfirm[Pass --noconfirm to pacman/makepkg]' \
                         '--repo-url[Clone from custom Git URL]:url:' \
-                        '1:package:_grimaur_aur_packages'
+                        '1:package:'
                     ;;
                 remove)
                     _arguments \
@@ -86,32 +85,14 @@ _grimaur() {
                         '--target[Which data to show]:target:(info PKGBUILD SRCINFO)' \
                         '--full[Include make/check/optional dependencies]' \
                         '--repo-url[Inspect package from custom Git URL]:url:' \
-                        '1:package:_grimaur_aur_packages'
+                        '1:package:'
                     ;;
                 list)
                     _arguments $global_opts
                     ;;
-                complete)
-                    _arguments \
-                        '1:subcommand:(install)' \
-                        '2:prefix:' \
-                        '--limit[Limit number of candidates]:number:(64)'
-                    ;;
             esac
             ;;
     esac
-}
-
-# Helper function to complete AUR package names
-_grimaur_aur_packages() {
-    local -a packages
-    local prefix="$PREFIX"
-    
-    # Only try to complete if we have at least 2 characters
-    if [[ ${#prefix} -ge 2 ]]; then
-        packages=(${(f)"$(grimaur complete install "$prefix" 2>/dev/null)"})
-        _describe -t packages 'AUR package' packages
-    fi
 }
 
 # Helper function to complete installed foreign packages

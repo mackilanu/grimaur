@@ -12,7 +12,7 @@ _grimaur_completion()
     fi
     
     # Global options (can appear anywhere before subcommand)
-    local global_opts="--dest-root --refresh --no-color --aur-rpc --git-mirror"
+    local global_opts="--dest-root --refresh --no-color --aur-rpc --git-mirror --use-ssh --shallow"
     
     # Find the subcommand (first non-option word after potential global options)
     local subcmd=""
@@ -37,24 +37,24 @@ _grimaur_completion()
         
         case "$subcmd" in
             fetch)
-                opts="$global_opts --force"
+                opts="$global_opts --force --repo-url"
                 ;;
             install)
-                opts="$global_opts --noconfirm"
+                opts="$global_opts --noconfirm --repo-url"
                 ;;
             remove)
                 opts="$global_opts --noconfirm --remove-cache"
                 ;;
             update)
-                opts="$global_opts --noconfirm --devel --global"
+                opts="$global_opts --noconfirm --devel --global --system-only --index --download --install"
                 ;;
             search)
-                opts="$global_opts --regex --limit --no-interactive --noconfirm"
+                opts="$global_opts --limit --no-interactive --noconfirm"
                 ;;
             inspect)
-                opts="$global_opts --target --full"
+                opts="$global_opts --target --full --repo-url"
                 ;;
-            list|complete)
+            list)
                 opts="$global_opts"
                 ;;
             "")
@@ -88,34 +88,14 @@ _grimaur_completion()
     
     # Complete package names based on subcommand
     case "$subcmd" in
-        install|fetch|inspect)
-            # Complete with AUR package names
-            if [[ -n "$cur" ]] && [[ ${#cur} -ge 2 ]]; then
-                local results
-                results=$(grimaur complete install "$cur" 2>/dev/null)
-                mapfile -t COMPREPLY < <(compgen -W "$results" -- "$cur")
-            fi
-            ;;
-        remove)
+        remove|update)
             # Complete with installed foreign packages
             local packages
             packages=$(pacman -Qmq 2>/dev/null)
             mapfile -t COMPREPLY < <(compgen -W "$packages" -- "$cur")
             ;;
-        update)
-            # Can optionally complete with specific foreign package names
-            local packages
-            packages=$(pacman -Qmq 2>/dev/null)
-            mapfile -t COMPREPLY < <(compgen -W "$packages" -- "$cur")
-            ;;
-        complete)
-            # First arg after complete should be "install"
-            if [[ $cword -eq $((subcmd_idx + 1)) ]]; then
-                mapfile -t COMPREPLY < <(compgen -W "install" -- "$cur")
-            fi
-            ;;
         *)
-            # No additional completion for search and list
+            # install/fetch/inspect: AUR name is typed in full; search/list: no positional completion
             ;;
     esac
 }
