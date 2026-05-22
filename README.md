@@ -20,7 +20,6 @@ API and **automatically falls back to the official git mirror when the endpoint 
    ```bash
    git clone https://github.com/ryk4rd/grimaur
    cd grimaur
-   chmod +x grimaur
    ./grimaur <command> # try --help 
    # or install globally makepkg -si
    ```

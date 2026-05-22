@@ -14,7 +14,7 @@ missing.
 
 ##  SPDX-License-Identifier: MIT */
 
-Requirements: git, makepkg, pacman, and sudo/doas/run0/su or root.
+Requirements: git, makepkg, pacman, and sudo/doas/run0/su.
 Elevation preference is read from `PACMAN_AUTH=(...)` in makepkg.conf
 (~/.config/pacman/makepkg.conf, ~/.makepkg.conf, then /etc/makepkg.conf);
 falls back to sudo, doas, run0, then su in that order.
@@ -118,6 +118,7 @@ def _elevate(cmd: list[str]) -> list[str]:
 	if tool == "su":
 		return ["su", "-c", shlex.join(cmd), "root"]
 	return [tool, *cmd]
+
 
 _RPC_FALLBACK_NOTIFIED = False
 
@@ -1099,9 +1100,7 @@ def install_package(
 	if is_installed(package):
 		installed_ver = get_installed_version(package)
 		if update_to:
-			print(
-				f"Updating {style(package, BOLD)} ({installed_ver} -> {update_to})"
-			)
+			print(f"Updating {style(package, BOLD)} ({installed_ver} -> {update_to})")
 		else:
 			print(
 				f"Package {style(package, BOLD)} is already installed ({installed_ver})"
