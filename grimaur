@@ -33,6 +33,7 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import Any
 from collections.abc import Iterable, Sequence
@@ -84,15 +85,19 @@ _INSTALLED_CACHE: set[str] | None = None
 _ELEV_TOOLS = ("sudo", "doas", "run0")
 
 
+@cache
 def _get_elev() -> str:
 	for tool in _ELEV_TOOLS:
 		if shutil.which(tool):
 			return tool
 	raise AurGitError("No privilege elevation tool found.")
 
-_PROVIDES_CACHE: dict[str, set[str] | None] = {}
-_VIRTUAL_PROVIDER_CACHE: dict[str, str | None] = {}
-_AUR_INFO_CACHE: dict[str, dict | None] = {}
+
+def _elevate(cmd: list[str]) -> list[str]:
+	if os.geteuid() != 0:
+		return [_get_elev(), *cmd]
+	return cmd
+
 _RPC_FALLBACK_NOTIFIED = False
 
 _COMMON_AUR_SUFFIXES = ("-bin",)
@@ -254,28 +259,21 @@ def aur_rpc_call(params: dict[str, Any]) -> dict[str, Any]:
 	return data
 
 
+@cache
 def aur_rpc_info(package: str) -> dict | None:
-	if package in _AUR_INFO_CACHE:
-		return _AUR_INFO_CACHE[package]
 	try:
 		data = aur_rpc_call({"type": "info", "arg[]": [package]})
 	except AurGitError:
-		_AUR_INFO_CACHE[package] = None
 		return None
 	results = data.get("results")
-	match: dict | None = None
 	if isinstance(results, list):
 		for entry in results:
 			if isinstance(entry, dict) and entry.get("Name") == package:
-				match = entry
-				break
-		if match is None:
-			for entry in results:
-				if isinstance(entry, dict) and entry.get("PackageBase") == package:
-					match = entry
-					break
-	_AUR_INFO_CACHE[package] = match
-	return match
+				return entry
+		for entry in results:
+			if isinstance(entry, dict) and entry.get("PackageBase") == package:
+				return entry
+	return None
 
 
 def dependency_set_from_rpc(info: dict) -> DependencySet:
@@ -639,6 +637,7 @@ def is_installed(package: str) -> bool:
 	return package in installed_package_set()
 
 
+@cache
 def exists_in_sync_repo(package: str) -> bool:
 	return _pacman_returns_zero(["pacman", "-Si", package])
 
@@ -658,9 +657,8 @@ def is_dependency_satisfied(dep: str) -> bool:
 	return proc.returncode == 0
 
 
+@cache
 def package_provides(package: str) -> set[str] | None:
-	if package in _PROVIDES_CACHE:
-		return _PROVIDES_CACHE[package]
 	provides: set[str] = set()
 	info: dict | None = None
 	if USE_AUR_RPC:
@@ -686,11 +684,7 @@ def package_provides(package: str) -> set[str] | None:
 						provides.add(normalized)
 	srcinfo = fetch_git_file(package, ".SRCINFO")
 	if not srcinfo:
-		if not provides:
-			_PROVIDES_CACHE[package] = None
-			return None
-		_PROVIDES_CACHE[package] = provides
-		return provides
+		return provides if provides else None
 	for raw_line in srcinfo.splitlines():
 		line = raw_line.strip()
 		if not line or "=" not in line:
@@ -700,7 +694,6 @@ def package_provides(package: str) -> set[str] | None:
 			normalized = _normalize_dep(value)
 			if normalized:
 				provides.add(normalized)
-	_PROVIDES_CACHE[package] = provides
 	return provides
 
 
@@ -759,11 +752,9 @@ def _search_aur_candidates_rpc(dep: str, *, limit: int) -> list[str]:
 	return names
 
 
+@cache
 def resolve_aur_dependency(dep: str) -> str | None:
-	if dep in _VIRTUAL_PROVIDER_CACHE:
-		return _VIRTUAL_PROVIDER_CACHE[dep]
 	if exists_in_aur_mirror(dep):
-		_VIRTUAL_PROVIDER_CACHE[dep] = dep
 		return dep
 	candidates: list[str] = []
 	seen: set[str] = set()
@@ -784,7 +775,6 @@ def resolve_aur_dependency(dep: str) -> str | None:
 		if not provides:
 			continue
 		if dep in provides:
-			_VIRTUAL_PROVIDER_CACHE[dep] = candidate
 			return candidate
 	search_terms = [dep, *(_pkgbase_guesses(dep))]
 	seen_search: set[str] = set()
@@ -800,9 +790,7 @@ def resolve_aur_dependency(dep: str) -> str | None:
 			if not provides:
 				continue
 			if dep in provides:
-				_VIRTUAL_PROVIDER_CACHE[dep] = candidate
 				return candidate
-	_VIRTUAL_PROVIDER_CACHE[dep] = None
 	return None
 
 
@@ -996,10 +984,8 @@ def install_official_packages(packages: Iterable[str], *, noconfirm: bool) -> No
 	if noconfirm:
 		cmd.append("--noconfirm")
 	cmd.extend(pkgs)
-	if os.geteuid() != 0:
-		cmd.insert(0, _get_elev())
 	print(f"Installing official packages: {' '.join(pkgs)}")
-	run_command(cmd)
+	run_command(_elevate(cmd))
 	invalidate_installed_cache()
 
 
@@ -1221,12 +1207,9 @@ def remove_package(
 	if noconfirm:
 		cmd.append("--noconfirm")
 
-	if os.geteuid() != 0:
-		cmd.insert(0, _get_elev())
-
 	print(f"Removing package {style(package, BOLD)}")
 	try:
-		run_command(cmd)
+		run_command(_elevate(cmd))
 		invalidate_installed_cache()
 		print(f"Successfully removed {style(package, GREEN)}")
 	except AurGitError as exc:
@@ -1299,12 +1282,9 @@ def update_packages(
 		if noconfirm:
 			cmd.append("--noconfirm")
 
-		if os.geteuid() != 0:
-			cmd.insert(0, _get_elev())
-
 		print(style("Updating system packages first...", CYAN))
 		try:
-			run_command(cmd)
+			run_command(_elevate(cmd))
 			invalidate_installed_cache()
 		except AurGitError as exc:
 			print(f"System update failed: {exc}", file=sys.stderr)
