@@ -52,4 +52,11 @@ jobs:
       - name: Install via grimaur (as builder)
         run: sudo -u builder ./grimaur install $PKG --noconfirm
 
+      - name: --repo-url + --use-ssh, then inspect remote
+        env:
+          DEBUG: "1"
+        run: |
+          sudo -u builder ./grimaur install archinstoo --repo-url https://github.com/h8d13/archinstoo --use-ssh --noconfirm
+          sudo -u builder git -C /home/builder/.cache/aurgit/archinstoo remote -v
+
       - run: ./grimaur list
