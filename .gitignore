@@ -1,3 +1,5 @@
 src/
+__pycache__/
 **-git/
 **.tar.zst
+**.bak

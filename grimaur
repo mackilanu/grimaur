@@ -150,6 +150,25 @@ def _maybe_ssh_rewrite(url: str) -> str:
 	return f"ssh://{user}@{parsed.netloc}/{path}"
 
 
+# Mirror SSH_REWRITE_HOSTS as git insteadOf rules via GIT_CONFIG_* env vars
+# this make the ssh only rule persist even if invoked by a child PKGBUILD/process
+def _ssh_rewrite_git_env() -> dict[str, str]:
+	pairs: list[tuple[str, str]] = []
+	for host, user in SSH_REWRITE_HOSTS.items():
+		for scheme in ("https", "http"):
+			pairs.append(
+				(
+					f"url.ssh://{user}@{host}/.insteadOf",
+					f"{scheme}://{host}/",
+				)
+			)
+	env = {"GIT_CONFIG_COUNT": str(len(pairs))}
+	for i, (key, value) in enumerate(pairs):
+		env[f"GIT_CONFIG_KEY_{i}"] = key
+		env[f"GIT_CONFIG_VALUE_{i}"] = value
+	return env
+
+
 _GLOBAL_FLAG_OPTIONS = {
 	"--refresh",
 	"--no-color",
@@ -1076,7 +1095,8 @@ def build_and_install(
 	if noconfirm:
 		cmd.append("--noconfirm")
 	print(f"Building {package_dir.name} with makepkg")
-	run_command(cmd, cwd=package_dir)
+	extra_env = _ssh_rewrite_git_env() if USE_SSH else {}
+	run_command(cmd, cwd=package_dir, env={**os.environ, **extra_env})
 	print(f"Built package artifacts remain under {package_dir}")
 	invalidate_installed_cache()
 

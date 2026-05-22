@@ -64,7 +64,7 @@ jobs:
           DEBUG: "1"
         run: |
           ./grimaur fetch archinstoo --use-ssh --shallow --repo-url https://github.com/h8d13/archinstoo 2>&1 | tee /tmp/ssh.log || true
-          grep -qF 'ssh://git@github.com/h8d13/archinstoo' /tmp/ssh.log \
+          grep -qF 'ssh://git@github.com/h8d13/archinstoo' /tmp/ssh.log; echo "URL re-written PASS." \
             || { echo "FAIL: --use-ssh did not rewrite URL to ssh://"; exit 1; }
 
       - name: Install via grimaur (as builder)

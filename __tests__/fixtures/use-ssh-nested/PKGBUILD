@@ -1,0 +1,21 @@
+# Fixture PKGBUILD: nested source URLs that exercise --use-ssh propagation.
+# Each rewritable host appears once; example.com is the negative case.
+pkgname=use-ssh-nested-test
+pkgver=0.0.1
+pkgrel=1
+pkgdesc="Fixture for grimaur --use-ssh propagation to PKGBUILD source git+https URLs"
+arch=('any')
+url="https://github.com/h8d13/grimaur3"
+license=('MIT')
+source=(
+	"git+https://github.com/foo/bar.git"
+	"git+https://gitlab.com/baz/qux.git"
+	"git+https://codeberg.org/abc/def.git"
+	"git+https://aur.archlinux.org/some-pkg.git"
+	"git+https://example.com/not-rewritten.git"
+)
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+package() {
+	:
+}
