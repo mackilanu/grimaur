@@ -17,13 +17,28 @@ jobs:
       PKG: yay
       PATTERN: python
 
+    defaults:
+      run:
+        shell: sudo -H -u builder --preserve-env=PKG,PATTERN,DEBUG bash -eo pipefail {0}
+
     steps:
       - uses: actions/checkout@v4
+        # checkout runs before our default shell takes effect
 
       - run: pacman-key --init
+        shell: bash
       - run: pacman --noconfirm -Sy archlinux-keyring
-      - run: pacman --noconfirm -S --needed git python base-devel
-# setup done
+        shell: bash
+      - run: pacman --noconfirm -S --needed git python base-devel sudo
+        shell: bash
+
+      - name: Setup builder user
+        shell: bash
+        run: |
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder .
+# setup done; all steps below run as builder via defaults.run.shell
       - run: ./grimaur --help
       - run: ./grimaur fetch $PKG
       - run: ./grimaur --refresh fetch $PKG
@@ -44,20 +59,14 @@ jobs:
       - name: Search unbounded (timed)
         run: time ./grimaur search $PATTERN --no-interactive
 
-      - name: Setup builder user
-        run: |
-          useradd -m builder
-          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-          chown -R builder:builder .
-
       - name: Test --use-ssh rewrites URLs (clone fails, but rewrite worked)
         env:
           DEBUG: "1"
         run: |
-          sudo -u builder ./grimaur fetch --use-ssh --shallow --repo-url https://github.com/h8d13/archinstoo $PKG 2>&1 | tee /tmp/ssh.log || true
+          ./grimaur fetch --use-ssh --shallow --repo-url https://github.com/h8d13/archinstoo $PKG 2>&1 | tee /tmp/ssh.log || true
           cat /tmp/ssh.log
 
       - name: Install via grimaur (as builder)
-        run: sudo -u builder ./grimaur install $PKG --noconfirm
+        run: ./grimaur install $PKG --noconfirm
 
       - run: ./grimaur list
