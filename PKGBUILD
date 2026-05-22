@@ -1,5 +1,5 @@
 pkgname=grimaur-git
-pkgver=r7.g88ebc08
+pkgver=r126.gbc37b65
 pkgrel=1
 pkgdesc="Lightweight AUR helper that uses the official AUR git mirror"
 arch=('any')
@@ -8,11 +8,11 @@ license=('MIT')
 depends=('python' 'git')
 provides=('grimaur')
 conflicts=('grimaur')
-source=("git+$url.git")
+source=("$pkgname::git+$url.git")
 sha256sums=('SKIP')
 
 pkgver() {
-  cd "${srcdir}/grimaur"
+  cd "${srcdir}/${pkgname}"
   if git describe --tags --long >/dev/null 2>&1; then
     git describe --tags --long | sed 's/^v//;s/-/./g'
   else
@@ -21,7 +21,7 @@ pkgver() {
 }
 
 package() {
-  cd "${srcdir}/grimaur"
+  cd "${srcdir}/${pkgname}"
   install -Dm755 grimaur "${pkgdir}/usr/bin/grimaur"
   sed -i "s/^__version__ = .*/__version__ = \"${pkgver}\"/" "${pkgdir}/usr/bin/grimaur"
 }
