@@ -22,7 +22,7 @@ jobs:
 
       - run: pacman-key --init
       - run: pacman --noconfirm -Sy archlinux-keyring
-      - run: pacman --noconfirm -S --needed git python base-devel
+      - run: pacman --noconfirm -S --needed git python base-devel openssh
 
       - run: ./grimaur --help
       - run: ./grimaur fetch $PKG
@@ -39,7 +39,7 @@ jobs:
       - run: ./grimaur --git-mirror fetch --force $PKG
       - run: ./grimaur fetch --force $PKG --git-mirror
       - run: ./grimaur --git-mirror update --noconfirm
-      - run: ./grimaur inspect $PKG
+      - run: ./grimaur inspect $PKG --target PKGBUILD
       - name: Search unbounded (timed)
         run: time ./grimaur search $PATTERN --no-interactive
 
