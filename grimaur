@@ -16,9 +16,6 @@ missing.
 
 Requirements: git, makepkg, pacman, and (for installing official packages) sudo/root.
 """
-
-from __future__ import annotations
-
 import argparse
 import heapq
 import json
