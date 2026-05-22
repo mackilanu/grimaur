@@ -9,7 +9,7 @@ API and **automatically falls back to the official git mirror when the endpoint 
 <br clear="left">
 
 > [!TIP]
-> When the AUR is down, for example: `grimaur <package> --git-mirror` to bypass the RPC entirely, this ensures higher uptimes.
+> When the AUR is down, for example: `grimaur <package> --git-mirror` bypasses the RPC entirely, this ensures 100% uptime.
 
 ## Install
 
