@@ -23,7 +23,6 @@ jobs:
       - run: pacman --noconfirm -S --needed git python base-devel
 
       - run: ./grimaur --help
-      - run: ./grimaur list
       - run: ./grimaur fetch $PKG
       - run: ./grimaur --refresh fetch $PKG
       - run: ./grimaur fetch --force $PKG
@@ -39,7 +38,8 @@ jobs:
       - run: ./grimaur fetch --force $PKG --git-mirror
       - run: ./grimaur --git-mirror update --noconfirm
       - run: ./grimaur inspect $PKG
-      - run: ./grimaur search $PATTERN --no-interactive --limit 5
+      - name: Search unbounded (timed)
+        run: time ./grimaur search $PATTERN --no-interactive
 
       - name: Setup builder user
         run: |
@@ -49,3 +49,5 @@ jobs:
 
       - name: Install via grimaur (as builder)
         run: sudo -u builder ./grimaur install $PKG --noconfirm
+
+      - run: ./grimaur list
