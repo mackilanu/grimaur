@@ -549,7 +549,6 @@ def _normalize_dep(dep_entry: str) -> str:
 
 
 def _pkgbase_guesses(dep: str) -> list[str]:
-	"""Return possible pkgbase names for split packages sharing a prefix."""
 	parts = dep.split("-")
 	guesses: list[str] = []
 	# Walk backwards dropping the last segment each time (foo-bar-baz -> foo-bar, foo)
