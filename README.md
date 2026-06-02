@@ -5,15 +5,13 @@
 
 `grimaur` is a lightweight AUR helper that searches, builds, and updates AUR packages. It uses the AUR RPC
 API and **automatically falls back to the official git mirror when the endpoint is unavailable.**
-
 <br clear="left">
-
 ## Install
 
 ### Deps
 `sudo pacman -S --needed git base-devel`
 
-#### From Github/Python directly
+### From Github/Python directly
    ```bash
    git clone https://github.com/mackilanu/grimaur
    cd grimaur
