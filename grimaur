@@ -10,11 +10,11 @@ missing. In a single truth python file.
 
       __...--~~~~~-._   _.-~~~~~--...__
 
-    //               `V'               \\ 
+    //               `V'               \\
 
-   //                 |                 \\ 
+   //                 |                 \\
 
-  //__...--~~~~~~-._  |  _.-~~~~~~--...__\\ 
+  //__...--~~~~~~-._  |  _.-~~~~~~--...__\\
 
  //__.....----~~~~._\ | /_.~~~~----.....__\\
 
@@ -49,8 +49,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
-from typing import Any
-from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+	from collections.abc import Iterable, Sequence
 
 
 __version__ = "dev"
@@ -280,8 +282,8 @@ class UpdateCandidate:
 	local_head: str | None
 
 
-def aur_rpc_call(params: dict[str, Any]) -> dict[str, Any]:
-	query_params: dict[str, Any] = {"v": "5"}
+def aur_rpc_call(params: dict[str, str | list[str]]) -> dict[str, object]:
+	query_params: dict[str, str | list[str]] = {"v": "5"}
 	query_params.update(params)
 	query = urllib.parse.urlencode(query_params, doseq=True)
 	url = f"{AUR_RPC_ENDPOINT}?{query}"
@@ -305,6 +307,8 @@ def aur_rpc_call(params: dict[str, Any]) -> dict[str, Any]:
 	except (UnicodeDecodeError, json.JSONDecodeError) as exc:
 		disable_aur_rpc("invalid JSON payload")
 		raise AurGitError("Failed to decode AUR RPC response") from exc
+	if not isinstance(data, dict):
+		raise AurGitError("AUR RPC returned non-dict response")
 	if data.get("type") == "error":
 		error_msg = str(data.get("error") or "Unknown AUR RPC error")
 		disable_aur_rpc(error_msg)
@@ -313,7 +317,7 @@ def aur_rpc_call(params: dict[str, Any]) -> dict[str, Any]:
 
 
 @cache
-def aur_rpc_info(package: str) -> dict | None:
+def aur_rpc_info(package: str) -> dict[str, object] | None:
 	try:
 		data = aur_rpc_call({"type": "info", "arg[]": [package]})
 	except AurGitError:
@@ -329,7 +333,7 @@ def aur_rpc_info(package: str) -> dict | None:
 	return None
 
 
-def dependency_set_from_rpc(info: dict) -> DependencySet:
+def dependency_set_from_rpc(info: dict[str, object]) -> DependencySet:
 	def gather(key: str, normalize: bool = True) -> set[str]:
 		values: set[str] = set()
 		items = info.get(key)
@@ -350,7 +354,7 @@ def dependency_set_from_rpc(info: dict) -> DependencySet:
 	return DependencySet(depends, makedepends, checkdepends, optdepends)
 
 
-def aur_rpc_search_results(pattern: str) -> list[dict]:
+def aur_rpc_search_results(pattern: str) -> list[dict[str, object]]:
 	try:
 		data = aur_rpc_call({"type": "search", "arg": pattern})
 	except AurGitError:
@@ -367,8 +371,8 @@ def run_command(
 	cwd: Path | None = None,
 	capture: bool = False,
 	check: bool = True,
-	env: dict | None = None,
-) -> subprocess.CompletedProcess | str:
+	env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str] | str:
 	if DEBUG:
 		cwd_hint = f" (cwd={cwd})" if cwd else ""
 		print(f"+ {' '.join(cmd)}{cwd_hint}", file=sys.stderr)
@@ -631,7 +635,7 @@ def is_regex(pattern: str) -> bool:
 def compute_match_score(
 	name: str,
 	*,
-	regex: re.Pattern | None,
+	regex: re.Pattern[str] | None,
 	needle: str | None,
 ) -> int | None:
 	if regex is not None:
@@ -660,6 +664,7 @@ def _pacman_returns_zero(args: Sequence[str]) -> bool:
 			stdout=subprocess.DEVNULL,
 			stderr=subprocess.DEVNULL,
 			text=True,
+			check=False,
 		)
 	except FileNotFoundError as exc:
 		raise AurGitError(
@@ -701,6 +706,7 @@ def is_dependency_satisfied(dep: str) -> bool:
 			stdout=subprocess.DEVNULL,
 			stderr=subprocess.DEVNULL,
 			text=True,
+			check=False,
 		)
 	except FileNotFoundError as exc:
 		raise AurGitError(
@@ -712,7 +718,7 @@ def is_dependency_satisfied(dep: str) -> bool:
 @cache
 def package_provides(package: str) -> set[str] | None:
 	provides: set[str] = set()
-	info: dict | None = None
+	info: dict[str, object] | None = None
 	if USE_AUR_RPC:
 		info = aur_rpc_info(package)
 		if info:
@@ -1053,7 +1059,7 @@ def collect_missing_official_packages(
 		return set(), set()
 	visited.add(package)
 
-	info: dict | None = None
+	info: dict[str, object] | None = None
 	deps: DependencySet | None = None
 	if USE_AUR_RPC:
 		info = aur_rpc_info(package)
@@ -1146,7 +1152,7 @@ def install_package(
 		preinstalled_official = set()
 
 	package_dir: Path | None = None
-	info: dict | None = None
+	info: dict[str, object] | None = None
 	if repo_url:
 		# Skip AUR RPC when using custom repo URL
 		package_dir = ensure_clone(
@@ -1268,12 +1274,11 @@ def remove_package(
 		return
 
 	# Optionally remove cached directory
-	if remove_cache:
-		package_dir = dest_root / package
-		if package_dir.exists():
-			print(f"Removing cached directory {package_dir}")
-			shutil.rmtree(package_dir)
-			print(f"Removed cache for {style(package, GREEN)}")
+	package_dir = dest_root / package
+	if remove_cache and package_dir.exists():
+		print(f"Removing cached directory {package_dir}")
+		shutil.rmtree(package_dir)
+		print(f"Removed cache for {style(package, GREEN)}")
 		else:
 			print(f"No cache found at {package_dir}")
 
@@ -1491,7 +1496,7 @@ def update_packages(
 def search_packages(
 	pattern: str,
 	*,
-	regex: re.Pattern | None,
+	regex: re.Pattern[str] | None,
 	needle: str | None,
 	limit: int | None,
 ) -> list[SearchResult]:
@@ -1515,7 +1520,7 @@ def search_packages(
 
 def search_packages_git(
 	*,
-	regex: re.Pattern | None,
+	regex: re.Pattern[str] | None,
 	needle: str | None,
 	limit: int | None,
 ) -> list[SearchResult]:
@@ -1600,7 +1605,7 @@ def search_packages_rpc(
 	if limit is None:
 		limit = 50
 	raw_results = aur_rpc_search_results(pattern)
-	candidates: list[tuple[int, dict]] = []
+	candidates: list[tuple[int, dict[str, object]]] = []
 	for entry in raw_results:
 		name = entry.get("Name")
 		if not isinstance(name, str):
@@ -1919,7 +1924,7 @@ def fetch_package(
 
 
 class _GrimaurArgParser(argparse.ArgumentParser):
-	def __init__(self, *args, **kwargs):
+	def __init__(self, *args: object, **kwargs: object) -> None:
 		super().__init__(*args, **kwargs)
 		for action in self._actions:
 			if isinstance(action, argparse._HelpAction):
@@ -2134,7 +2139,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 	parser = build_parser()
 	args = parser.parse_args(argv_list)
 
-	dest_root = Path(os.path.expanduser(args.dest_root)).resolve()
+	dest_root = Path(args.dest_root).expanduser().resolve()
 	refresh: bool = bool(args.refresh)
 
 	global USE_COLOR, USE_AUR_RPC, FORCE_GIT_MIRROR, USE_SSH, SHALLOW_CLONE

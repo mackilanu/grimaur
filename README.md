@@ -8,9 +8,6 @@ API and **automatically falls back to the official git mirror when the endpoint 
 
 <br clear="left">
 
-> [!TIP]
-> When the AUR is down, for example: `grimaur <package> --git-mirror` bypasses the RPC entirely, this ensures 100% uptime. **Regex** implies git mirror by default between `""`.
-
 ## Install
 
 ### Deps
@@ -24,17 +21,17 @@ API and **automatically falls back to the official git mirror when the endpoint 
    # or install globally makepkg -si
    ```
 
+>[!TIP]
+> You can use `grimaur fetch <package>` to inspect `PKGBUILD` and source code before manually installing using `makepkg` or similar.
+
+Even see it directly: `python grimaur inspect brave-bin --target PKGBUILD` Also accepts: `SRCINFO`
+
 ## Usage
 ### Search Packages
 - `grimaur <term>` (or `grimaur search <term>`) lists matching packages and lets you pick one to install.
    - Regex "pattern-*"` automatically uses git mirror
    - Pass `--git-mirror` when endpoint is down
 - `grimaur list` to see installed "foreign" packages recognized by pacman -Qm
-
->[!NOTE]
-> You can use `grimaur fetch <package>` to inspect `PKGBUILD` and source code before manually installing using `makepkg` or similar.
-
-Even see it directly: `python grimaur inspect brave-bin --target PKGBUILD` Also accepts: `SRCINFO`
 
 ### Inspect & Install & Remove Packages
 
