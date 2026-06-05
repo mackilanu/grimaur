@@ -1,10 +1,10 @@
 [project]
 name = "grimaur"
 version = "0.1.1"
-requires-python = ">=3.12"
+requires-python = "3.14"
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py314"
 line-length = 88
 extend-include = ["grimaur"]
 
@@ -16,7 +16,7 @@ ignore = ["E501", "W191"]
 indent-style = "tab"
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 warn_return_any = true
 warn_unused_ignores = true
 disallow_untyped_defs = true
