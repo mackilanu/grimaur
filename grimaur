@@ -167,15 +167,14 @@ def _maybe_ssh_rewrite(url: str) -> str:
 # Mirror SSH_REWRITE_HOSTS as git insteadOf rules via GIT_CONFIG_* env vars
 # this make the ssh only rule persist even if invoked by a child PKGBUILD/process
 def _ssh_rewrite_git_env() -> dict[str, str]:
-	pairs: list[tuple[str, str]] = []
-	for host, user in SSH_REWRITE_HOSTS.items():
-		for scheme in ("https", "http"):
-			pairs.append(
-				(
-					f"url.ssh://{user}@{host}/.insteadOf",
-					f"{scheme}://{host}/",
-				)
-			)
+	pairs: list[tuple[str, str]] = [
+		(
+			f"url.ssh://{user}@{host}/.insteadOf",
+			f"{scheme}://{host}/",
+		)
+		for host, user in SSH_REWRITE_HOSTS.items()
+		for scheme in ("https", "http")
+	]
 	env = {"GIT_CONFIG_COUNT": str(len(pairs))}
 	for i, (key, value) in enumerate(pairs):
 		env[f"GIT_CONFIG_KEY_{i}"] = key
@@ -290,7 +289,7 @@ def aur_rpc_call(params: dict[str, str | list[str]]) -> dict[str, object]:
 	if DEBUG:
 		print(f"+ GET {url}", file=sys.stderr)
 	try:
-		with urllib.request.urlopen(url, timeout=10) as response:
+		with urllib.request.urlopen(url, timeout=10) as response:  # noqa: S310 - url built from hardcoded https AUR endpoint
 			status = response.getcode()
 			if status != 200:
 				disable_aur_rpc(f"status {status}")
@@ -377,7 +376,7 @@ def run_command(
 		cwd_hint = f" (cwd={cwd})" if cwd else ""
 		print(f"+ {' '.join(cmd)}{cwd_hint}", file=sys.stderr)
 	try:
-		completed = subprocess.run(
+		completed = subprocess.run(  # noqa: S603 - cmd is built internally, not from untrusted input
 			list(cmd),
 			cwd=str(cwd) if cwd else None,
 			check=check,
@@ -659,7 +658,7 @@ def compute_match_score(
 
 def _pacman_returns_zero(args: Sequence[str]) -> bool:
 	try:
-		proc = subprocess.run(
+		proc = subprocess.run(  # noqa: S603 - args are built internally, not from untrusted input
 			list(args),
 			stdout=subprocess.DEVNULL,
 			stderr=subprocess.DEVNULL,
@@ -701,8 +700,8 @@ def exists_in_sync_repo(package: str) -> bool:
 
 def is_dependency_satisfied(dep: str) -> bool:
 	try:
-		proc = subprocess.run(
-			["pacman", "-T", dep],
+		proc = subprocess.run(  # noqa: S603 - dep is a package name, not untrusted input
+			["pacman", "-T", dep],  # noqa: S607 - pacman resolved via PATH
 			stdout=subprocess.DEVNULL,
 			stderr=subprocess.DEVNULL,
 			text=True,
@@ -1000,7 +999,7 @@ def fetch_git_file(package: str, path: str) -> str | None:
 	if DEBUG:
 		print(f"+ GET {url}", file=sys.stderr)
 	try:
-		with urllib.request.urlopen(url, timeout=10) as response:
+		with urllib.request.urlopen(url, timeout=10) as response:  # noqa: S310 - url built from hardcoded https GitHub base
 			if response.status != 200:
 				return None
 			data = response.read()
@@ -1293,20 +1292,19 @@ def get_ignored_packages() -> set[str]:
 
 	content = pacman_conf.read_text()
 
-	for line in content.splitlines():
-		line = line.strip()
+	for raw_line in content.splitlines():
+		line = raw_line.strip()
 
 		# Skip comments and empty lines
 		if not line or line.startswith("#"):
 			continue
 
 		# Look for IgnorePkg lines
-		if line.startswith("IgnorePkg"):
-			# Format: IgnorePkg = pkg1 pkg2 pkg3
-			if "=" in line:
-				_, packages = line.split("=", 1)
-				for pkg in packages.split():
-					ignored.add(pkg.strip())
+		# Format: IgnorePkg = pkg1 pkg2 pkg3
+		if line.startswith("IgnorePkg") and "=" in line:
+			_, packages = line.split("=", 1)
+			for pkg in packages.split():
+				ignored.add(pkg.strip())
 
 	return ignored
 
@@ -1638,7 +1636,7 @@ def search_packages_rpc(
 		if isinstance(votes_value, int | float | str):
 			try:
 				votes = int(votes_value)
-			except (TypeError, ValueError):
+			except TypeError, ValueError:
 				votes = None
 		maintainer = entry.get("Maintainer")
 		is_orphan = maintainer in (None, "")
@@ -2120,9 +2118,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 			if item == "--":
 				remaining.extend(argv_list[i:])
 				break
-			if item in _GLOBAL_FLAG_OPTIONS:
-				reordered.append(item)
-			elif any(item.startswith(f"{opt}=") for opt in _GLOBAL_VALUE_OPTIONS):
+			if item in _GLOBAL_FLAG_OPTIONS or any(
+				item.startswith(f"{opt}=") for opt in _GLOBAL_VALUE_OPTIONS
+			):
 				reordered.append(item)
 			elif item in _GLOBAL_VALUE_OPTIONS:
 				reordered.append(item)
@@ -2167,7 +2165,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 		return 0
 
 	# fallback when /tmp is not writable, use our default + .tmp.
-	current_tmp = os.environ.get("TMPDIR") or "/tmp"
+	current_tmp = os.environ.get("TMPDIR") or "/tmp"  # noqa: S108 - standard TMPDIR default, writability checked below
 	if not os.access(current_tmp, os.W_OK):
 		fallback_tmp = dest_root / ".tmp"
 		fallback_tmp.mkdir(parents=True, exist_ok=True)
