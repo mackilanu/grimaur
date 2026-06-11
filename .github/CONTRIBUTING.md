@@ -14,7 +14,7 @@ git push
 
 ## Discussions
 
-Currently, questions, bugs and suggestions should be reported through [GitHub issue tracker](https://github.com/h8d13/archinstoo/issues).
+Currently, questions, bugs and suggestions should be reported through [GitHub issue tracker](https://github.com/mackilanu/grimaur/issues).
 
 ## Coding convention
 
