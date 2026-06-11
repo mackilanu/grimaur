@@ -14,11 +14,8 @@ sha256sums=('SKIP')
 
 pkgver() {
 	cd "${srcdir}/${pkgname}"
-	if git describe --tags --long >/dev/null 2>&1; then
-		git describe --tags --long | sed 's/^v//;s/-/./g'
-	else
-		printf 'r%s.g%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
-	fi
+	# always use git hash for version
+	printf 'r%s.g%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
 package() {
