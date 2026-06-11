@@ -22,4 +22,10 @@ All rules/exclusions can be consulted in the master `pyproject.toml` file.
 
 Use `ruff` and `shfmt` or `pre-commit` [file](/.pre-commit-config.yaml).
 
+Why a single file?
+
+`grimaur` is used in installer flows which make it one `curl` or `wget` away:
+
+[rawlink](https://raw.githubusercontent.com/mackilanu/grimaur/master/grimaur)
+
 ---
