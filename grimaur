@@ -89,6 +89,7 @@ CACHE_TTL = 3600
 _INSTALLED_CACHE: set[str] | None = None
 _ELEV_TOOLS = ("sudo", "doas", "run0", "su")
 _PACMAN_AUTH_RE = re.compile(r'^\s*PACMAN_AUTH\s*=\s*\(?\s*"?([^"\s)]+)"?')
+_PACMAN_DBPATH_RE = re.compile(r"^\s*DBPath\s*=\s*(\S+)")
 
 
 def _makepkg_conf_paths() -> tuple[Path, ...]:
@@ -98,6 +99,18 @@ def _makepkg_conf_paths() -> tuple[Path, ...]:
 		Path.home() / ".makepkg.conf",
 		Path("/etc/makepkg.conf"),
 	)
+
+
+def _pacman_db_path() -> Path:
+	try:
+		content = Path("/etc/pacman.conf").read_text()
+	except OSError:
+		return Path("/var/lib/pacman")
+	for line in content.splitlines():
+		match = _PACMAN_DBPATH_RE.match(line)
+		if match:
+			return Path(match.group(1))
+	return Path("/var/lib/pacman")
 
 
 def _read_pacman_auth() -> str | None:
@@ -722,8 +735,25 @@ def invalidate_installed_cache() -> None:
 	_INSTALLED_CACHE = None
 
 
+def _list_local_db_packages() -> set[str] | None:
+	# Reading pacman's local db directory directly avoids a ~50ms subprocess.
+	# Entries are name-version-release dirs; ALPM_DB_VERSION has no dashes.
+	try:
+		entries = [entry.name for entry in (_pacman_db_path() / "local").iterdir()]
+	except OSError:
+		return None
+	packages: set[str] = set()
+	for entry in entries:
+		parts = entry.rsplit("-", 2)
+		if len(parts) == 3:
+			packages.add(parts[0])
+	return packages or None
+
+
 def installed_package_set() -> set[str]:
 	global _INSTALLED_CACHE
+	if _INSTALLED_CACHE is None:
+		_INSTALLED_CACHE = _list_local_db_packages()
 	if _INSTALLED_CACHE is None:
 		# we can still search without pacman installed.
 		if shutil.which("pacman") is None:
