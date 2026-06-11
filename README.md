@@ -15,7 +15,7 @@ API and **automatically falls back to the official git mirror when the endpoint 
    ```bash
    git clone https://github.com/mackilanu/grimaur
    cd grimaur
-   ./grimaur <command> # try --help 
+   ./grimaur <command> # try --help
    # or install globally makepkg -si
    ```
 
@@ -27,7 +27,7 @@ Even see it directly: `python grimaur inspect brave-bin --target PKGBUILD` Also 
 ## Usage
 ### Search Packages
 - `grimaur <term>` (or `grimaur search <term>`) lists matching packages and lets you pick one to install.
-   - Regex "pattern-*"` automatically uses git mirror
+   - Regex `"pattern-*"` automatically uses git mirror
    - Pass `--git-mirror` when endpoint is down
 - `grimaur list` to see installed "foreign" packages recognized by pacman -Qm
 
@@ -53,13 +53,13 @@ Even see it directly: `python grimaur inspect brave-bin --target PKGBUILD` Also 
 
 ### Additional Options
 
-- Useful to build in `tmp/` pass `--dest-root` - (default: `~/.cache/aurgit`) 
+- Useful to build in `tmp/` pass `--dest-root` - (default: `~/.cache/aurgit`)
 - For automating updates `grimaur update`:
    - Pass `--global --download`, download updates without installing `-Syuw`
    - Pass `--global --install`, to be used with command above `-Su`
 - Useful for scripting on top of Grimaur
-   - `--no-color` disables colored terminal output 
-   - `grimaur search <term> --limit 10` limits results to the first N matches 
+   - `--no-color` disables colored terminal output
+   - `grimaur search <term> --limit 10` limits results to the first N matches
    - `grimaur search <term> --no-interactive` lists results without prompting to install
 - Force `grimaur fetch <package> --force` reclones even if the directory exists
 - Complete example: `python grimaur --use-ssh search "brave.*-bin" --no-interactive`
