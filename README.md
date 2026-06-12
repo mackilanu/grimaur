@@ -62,6 +62,8 @@ Even see it directly: `python grimaur inspect brave-bin --target PKGBUILD` Also 
    - `--no-color` disables colored terminal output
    - `grimaur search <term> --limit 10` limits results to the first N matches
    - `grimaur search <term> --no-interactive` lists results without prompting to install
+   - `grimaur search <term> --plain` pacman `-Ss` style two-line output for scripting (best match first)
+   - `grimaur inspect <pkg> --plain` pacman `-Si` style `Key : Value` output for scripting
 - Force `grimaur fetch <package> --force` reclones even if the directory exists
 - Complete example: `python grimaur --use-ssh search "brave.*-bin" --no-interactive`
 

@@ -1836,6 +1836,17 @@ def format_search_result(index: int, result: SearchResult) -> list[str]:
 	return lines
 
 
+def format_search_result_plain(result: SearchResult) -> list[str]:
+	# pacman -Ss shape for scripting: "aur/name version [installed]" plus an
+	# indented description line, always two lines per package.
+	line = f"aur/{result.name}"
+	if result.version:
+		line += f" {result.version}"
+	if result.installed:
+		line += " [installed]"
+	return [line, f"    {result.description or ''}"]
+
+
 def print_search_results(results: Sequence[SearchResult]) -> None:
 	total = len(results)
 	for pos, result in enumerate(results):
@@ -1962,6 +1973,136 @@ def interactive_select_results(results: Sequence[SearchResult]) -> list[SearchRe
 		return selected
 
 
+def _format_epoch(value: object) -> str | None:
+	if isinstance(value, int | float):
+		return time.strftime("%Y-%m-%d", time.gmtime(value))
+	return None
+
+
+def _info_list(info: dict[str, object], key: str) -> str:
+	items = info.get(key)
+	if isinstance(items, list) and items:
+		return "  ".join(str(item) for item in items)
+	return "None"
+
+
+def rpc_info_fields(info: dict[str, object]) -> list[tuple[str, str]]:
+	def text(key: str) -> str:
+		value = info.get(key)
+		return str(value) if value not in (None, "") else "None"
+
+	popularity = info.get("Popularity")
+	return [
+		("Repository", "aur"),
+		("Name", text("Name")),
+		("Version", text("Version")),
+		("Description", text("Description")),
+		("URL", text("URL")),
+		("Licenses", _info_list(info, "License")),
+		("Groups", _info_list(info, "Groups")),
+		("Provides", _info_list(info, "Provides")),
+		("Depends On", _info_list(info, "Depends")),
+		("Make Deps", _info_list(info, "MakeDepends")),
+		("Check Deps", _info_list(info, "CheckDepends")),
+		("Optional Deps", _info_list(info, "OptDepends")),
+		("Conflicts With", _info_list(info, "Conflicts")),
+		("Replaces", _info_list(info, "Replaces")),
+		("Maintainer", text("Maintainer")),
+		("Votes", text("NumVotes")),
+		(
+			"Popularity",
+			f"{popularity:.2f}" if isinstance(popularity, int | float) else "None",
+		),
+		("First Submitted", _format_epoch(info.get("FirstSubmitted")) or "None"),
+		("Last Modified", _format_epoch(info.get("LastModified")) or "None"),
+		("Out-of-date", _format_epoch(info.get("OutOfDate")) or "No"),
+	]
+
+
+def _srcinfo_values(srcinfo_content: str, key: str) -> list[str]:
+	values: list[str] = []
+	prefix = f"{key} ="
+	for raw_line in srcinfo_content.splitlines():
+		line = raw_line.strip()
+		if line.startswith(prefix):
+			value = line[len(prefix) :].strip()
+			if value:
+				values.append(value)
+	return values
+
+
+def srcinfo_info_fields(package: str, srcinfo_content: str) -> list[tuple[str, str]]:
+	_, pkgdesc, deps = parse_dependencies(srcinfo_content)
+
+	def first(key: str) -> str | None:
+		values = _srcinfo_values(srcinfo_content, key)
+		return values[0] if values else None
+
+	def join(values: Iterable[str]) -> str:
+		ordered = sorted(values)
+		return "  ".join(ordered) if ordered else "None"
+
+	version = first("pkgver")
+	if version:
+		pkgrel = first("pkgrel")
+		if pkgrel:
+			version = f"{version}-{pkgrel}"
+		epoch = first("epoch")
+		if epoch:
+			version = f"{epoch}:{version}"
+	return [
+		("Repository", "aur"),
+		("Name", package),
+		("Version", version or "None"),
+		("Description", pkgdesc or "None"),
+		("URL", first("url") or "None"),
+		("Licenses", join(_srcinfo_values(srcinfo_content, "license"))),
+		("Provides", join(_srcinfo_values(srcinfo_content, "provides"))),
+		("Depends On", join(deps.depends)),
+		("Make Deps", join(deps.makedepends)),
+		("Check Deps", join(deps.checkdepends)),
+		("Optional Deps", join(deps.optdepends)),
+		("Conflicts With", join(_srcinfo_values(srcinfo_content, "conflicts"))),
+	]
+
+
+def print_info_fields(fields: list[tuple[str, str]]) -> None:
+	width = max(len(key) for key, _ in fields)
+	for key, value in fields:
+		print(f"{key:<{width}} : {value}")
+
+
+def _print_info_summary(
+	package: str,
+	description: str | None,
+	deps: DependencySet,
+	*,
+	show_deps: bool,
+) -> None:
+	print(f"Package: {package}")
+	if description:
+		print(f"Description: {description}")
+	if deps.depends:
+		print("Depends:")
+		for dep in sorted(deps.depends):
+			print(f"  {dep}")
+	else:
+		print("Depends: (none)")
+	if not show_deps:
+		return
+	for label, values in (
+		("Make depends", deps.makedepends),
+		("Check depends", deps.checkdepends),
+		("Optional", deps.optdepends),
+	):
+		if values:
+			print(f"{label}:")
+			for dep in sorted(values):
+				print(f"  {dep}")
+		else:
+			print(f"{label}: (none)")
+
+
 def inspect_package(
 	package: str,
 	dest_root: Path,
@@ -1970,44 +2111,25 @@ def inspect_package(
 	target: str,
 	show_deps: bool,
 	repo_url: str | None = None,
+	plain: bool = False,
 ) -> None:
 	if USE_AUR_RPC and target == "info" and not repo_url:
 		info = aur_rpc_info(package)
 		if info:
-			deps = dependency_set_from_rpc(info)
-			print(f"Package: {package}")
+			if plain:
+				print_info_fields(rpc_info_fields(info))
+				return
 			description = (
 				info.get("Description")
 				if isinstance(info.get("Description"), str)
 				else None
 			)
-			if description:
-				print(f"Description: {description}")
-			if deps.depends:
-				print("Depends:")
-				for dep in sorted(deps.depends):
-					print(f"  {dep}")
-			else:
-				print("Depends: (none)")
-			if show_deps:
-				if deps.makedepends:
-					print("Make depends:")
-					for dep in sorted(deps.makedepends):
-						print(f"  {dep}")
-				else:
-					print("Make depends: (none)")
-				if deps.checkdepends:
-					print("Check depends:")
-					for dep in sorted(deps.checkdepends):
-						print(f"  {dep}")
-				else:
-					print("Check depends: (none)")
-				if deps.optdepends:
-					print("Optional:")
-					for dep in sorted(deps.optdepends):
-						print(f"  {dep}")
-				else:
-					print("Optional: (none)")
+			_print_info_summary(
+				package,
+				description,
+				dependency_set_from_rpc(info),
+				show_deps=show_deps,
+			)
 			return
 		if USE_AUR_RPC:
 			raise AurGitError(f"Package '{package}' not found via AUR RPC")
@@ -2024,35 +2146,11 @@ def inspect_package(
 		return
 
 	srcinfo = read_srcinfo(package_dir)
+	if plain:
+		print_info_fields(srcinfo_info_fields(package, srcinfo))
+		return
 	_, pkgdesc, deps = parse_dependencies(srcinfo)
-	print(f"Package: {package}")
-	if pkgdesc:
-		print(f"Description: {pkgdesc}")
-	if deps.depends:
-		print("Depends:")
-		for dep in sorted(deps.depends):
-			print(f"  {dep}")
-	else:
-		print("Depends: (none)")
-	if show_deps:
-		if deps.makedepends:
-			print("Make depends:")
-			for dep in sorted(deps.makedepends):
-				print(f"  {dep}")
-		else:
-			print("Make depends: (none)")
-		if deps.checkdepends:
-			print("Check depends:")
-			for dep in sorted(deps.checkdepends):
-				print(f"  {dep}")
-		else:
-			print("Check depends: (none)")
-		if deps.optdepends:
-			print("Optional:")
-			for dep in sorted(deps.optdepends):
-				print(f"  {dep}")
-		else:
-			print("Optional: (none)")
+	_print_info_summary(package, pkgdesc, deps, show_deps=show_deps)
 
 
 def fetch_package(
@@ -2222,6 +2320,12 @@ def build_parser() -> argparse.ArgumentParser:
 		action="store_true",
 		help="Skip confirmation prompts when installing from search",
 	)
+	search_parser.add_argument(
+		"--plain",
+		action="store_true",
+		help="pacman -Ss style output (best match first) for scripting; "
+		"implies --no-interactive",
+	)
 
 	inspect_parser = subparsers.add_parser(
 		"inspect", help="Show PKGBUILD or dependency information"
@@ -2240,6 +2344,11 @@ def build_parser() -> argparse.ArgumentParser:
 	)
 	inspect_parser.add_argument(
 		"--repo-url", help="Inspect package from custom Git URL"
+	)
+	inspect_parser.add_argument(
+		"--plain",
+		action="store_true",
+		help="pacman -Si style 'Key : Value' output for scripting (info target only)",
 	)
 	subparsers.add_parser("list", help="List installed foreign (AUR) packages")
 
@@ -2433,6 +2542,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 				return 1
 
 			ordered_results = order_search_results(results)
+			if args.plain:
+				for result in ordered_results:
+					for line in format_search_result_plain(result):
+						print(line)
+				return 0
 			display_results = list(reversed(ordered_results))
 			print(style("Search results (best matches last):", CYAN))
 			print_search_results(display_results)
@@ -2482,6 +2596,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 				else ("SRCINFO" if args.target == "SRCINFO" else "info"),
 				show_deps=args.full,
 				repo_url=getattr(args, "repo_url", None),
+				plain=args.plain,
 			)
 		elif args.command == "list":
 			list_installed_packages()

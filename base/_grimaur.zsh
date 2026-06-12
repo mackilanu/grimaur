@@ -77,6 +77,7 @@ _grimaur() {
                         '--limit[Limit results]:number:(10 20 50 100)' \
                         '--no-interactive[Disable interactive selection]' \
                         '--noconfirm[Skip confirmation prompts]' \
+                        '--plain[pacman -Ss style output for scripting]' \
                         '1:pattern:'
                     ;;
                 inspect)
@@ -85,6 +86,7 @@ _grimaur() {
                         '--target[Which data to show]:target:(info PKGBUILD SRCINFO)' \
                         '--full[Include make/check/optional dependencies]' \
                         '--repo-url[Inspect package from custom Git URL]:url:' \
+                        '--plain[pacman -Si style output for scripting]' \
                         '1:package:'
                     ;;
                 list)

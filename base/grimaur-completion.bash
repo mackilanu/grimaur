@@ -49,10 +49,10 @@ _grimaur_completion()
                 opts="$global_opts --noconfirm --devel --global --system-only --index --download --install"
                 ;;
             search)
-                opts="$global_opts --limit --no-interactive --noconfirm"
+                opts="$global_opts --limit --no-interactive --noconfirm --plain"
                 ;;
             inspect)
-                opts="$global_opts --target --full --repo-url"
+                opts="$global_opts --target --full --repo-url --plain"
                 ;;
             list)
                 opts="$global_opts"
