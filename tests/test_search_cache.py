@@ -46,6 +46,14 @@ class CacheHelperTests(unittest.TestCase):
 		os.utime(grimaur.CACHE_DIR / "packages.list", (stale, stale))
 		self.assertIsNone(grimaur.cache_get("packages.list", ttl=60))
 
+	def test_expired_entry_is_pruned(self):
+		grimaur.cache_put("packages.list", "foo\nbar")
+		path = grimaur.CACHE_DIR / "packages.list"
+		stale = time.time() - 120
+		os.utime(path, (stale, stale))
+		grimaur.cache_get("packages.list", ttl=60)
+		self.assertFalse(path.exists())
+
 
 class CachedJsonTests(unittest.TestCase):
 	def setUp(self):
@@ -74,6 +82,18 @@ class CachedJsonTests(unittest.TestCase):
 		fetch = mock.Mock(return_value={"ok": 1})
 		self.assertEqual(grimaur.cached_json("k.json", 60, fetch), {"ok": 1})
 		fetch.assert_called_once()
+
+	def test_zero_ttl_refetches_and_repopulates(self):
+		# --refresh sets CACHE_TTL=0: every read expires, writes still land
+		grimaur.cache_put("k.json", '{"stale": 1}')
+		stale = time.time() - 1
+		os.utime(grimaur.CACHE_DIR / "k.json", (stale, stale))
+		fetch = mock.Mock(return_value={"fresh": 1})
+		self.assertEqual(grimaur.cached_json("k.json", 0, fetch), {"fresh": 1})
+		fetch.assert_called_once()
+		self.assertEqual(
+			json.loads((grimaur.CACHE_DIR / "k.json").read_text()), {"fresh": 1}
+		)
 
 
 class RpcSearchCacheTests(unittest.TestCase):
@@ -106,6 +126,42 @@ class RpcSearchCacheTests(unittest.TestCase):
 			results = grimaur.aur_rpc_search_results("foo")
 		self.assertEqual(results, [])
 		urlopen.assert_called_once()
+
+
+class GitSearchCacheTests(unittest.TestCase):
+	def setUp(self):
+		tmp = tempfile.TemporaryDirectory()
+		self.addCleanup(tmp.cleanup)
+		self.cache_dir = Path(tmp.name)
+		for target, value in (
+			("CACHE_DIR", self.cache_dir),
+			("get_aur_remote", mock.Mock(return_value="https://aur.example")),
+			("installed_package_set", mock.Mock(return_value=set())),
+		):
+			patcher = mock.patch.object(grimaur, target, value)
+			patcher.start()
+			self.addCleanup(patcher.stop)
+
+	def test_empty_mirror_output_is_not_cached(self):
+		with mock.patch.object(grimaur, "run_command", return_value=""):
+			results = grimaur.search_packages_git(regex=None, needle="foo", limit=None)
+		self.assertEqual(results, [])
+		self.assertFalse((self.cache_dir / "packages.json").exists())
+
+	def test_metadata_failure_drops_entry_without_killing_search(self):
+		ls_remote = "abc123\trefs/heads/foopkg\ndef456\trefs/heads/foolib\n"
+
+		def srcinfo(package):
+			if package == "foopkg":
+				raise grimaur.AurGitError("boom")
+			return ("1.0", "desc")
+
+		with (
+			mock.patch.object(grimaur, "run_command", return_value=ls_remote),
+			mock.patch.object(grimaur, "git_srcinfo_metadata", side_effect=srcinfo),
+		):
+			results = grimaur.search_packages_git(regex=None, needle="foo", limit=None)
+		self.assertEqual([r.name for r in results], ["foolib"])
 
 
 if __name__ == "__main__":

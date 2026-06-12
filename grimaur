@@ -299,6 +299,7 @@ def cache_get(key: str, ttl: int) -> str | None:
 	path = CACHE_DIR / key
 	try:
 		if time.time() - path.stat().st_mtime > ttl:
+			path.unlink(missing_ok=True)
 			return None
 		return path.read_text()
 	except OSError:
@@ -311,7 +312,8 @@ def cache_put(key: str, payload: str) -> None:
 	path = CACHE_DIR / key
 	try:
 		path.parent.mkdir(parents=True, exist_ok=True)
-		tmp = path.with_name(path.name + ".tmp")
+		# pid-unique tmp so concurrent processes never interleave writes
+		tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
 		tmp.write_text(payload)
 		tmp.replace(path)
 	except OSError:
@@ -1612,7 +1614,7 @@ def search_packages_git(
 	if limit is None:
 		limit = 50
 
-	def fetch_names() -> list[str]:
+	def fetch_names() -> list[str] | None:
 		output = run_command(
 			["git", "ls-remote", "--heads", get_aur_remote()], capture=True
 		)
@@ -1625,10 +1627,14 @@ def search_packages_git(
 			except ValueError:
 				continue
 			names.append(ref.split("/")[-1])
-		return names
+		# None on empty so a transient mirror hiccup is never cached for an hour
+		return names or None
 
+	names = cached_json("packages.json", CACHE_TTL, fetch_names)
+	if not isinstance(names, list):
+		names = []
 	candidates: list[tuple[int, str]] = []
-	for package in cached_json("packages.json", CACHE_TTL, fetch_names):
+	for package in names:
 		score = compute_match_score(package, regex=regex, needle=needle)
 		if score is None:
 			continue
@@ -1676,6 +1682,7 @@ def search_packages_git(
 	# Plain threads instead of ThreadPoolExecutor: concurrent.futures drags in
 	# logging (~15ms import); threading is already loaded at startup.
 	slots: list[SearchResult | None] = [None] * len(candidates)
+	errors: list[str] = []
 	progress_lock = threading.Lock()
 	done = 0
 	workers = min(10, len(candidates))
@@ -1683,7 +1690,12 @@ def search_packages_git(
 	def fetch_slice(offset: int) -> None:
 		nonlocal done
 		for idx in range(offset, len(candidates), workers):
-			slots[idx] = fetch_metadata(candidates[idx])
+			# A raised fetch must not kill the thread: that would silently
+			# drop every remaining candidate in this stride.
+			try:
+				slots[idx] = fetch_metadata(candidates[idx])
+			except Exception as exc:
+				errors.append(f"{candidates[idx][1]}: {exc}")
 			if sys.stderr.isatty():
 				with progress_lock:
 					done += 1
@@ -1705,6 +1717,8 @@ def search_packages_git(
 
 	if sys.stderr.isatty():
 		print(file=sys.stderr)
+	for message in errors:
+		print(f"warning: metadata fetch failed: {message}", file=sys.stderr)
 	return [result for result in slots if result is not None]
 
 
@@ -2255,8 +2269,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 	dest_root = Path(args.dest_root).expanduser().resolve()
 	refresh: bool = bool(args.refresh)
 
-	global USE_COLOR, USE_AUR_RPC, FORCE_GIT_MIRROR, USE_SSH, SHALLOW_CLONE, CACHE_DIR
+	global USE_COLOR, USE_AUR_RPC, FORCE_GIT_MIRROR, USE_SSH, SHALLOW_CLONE
+	global CACHE_DIR, CACHE_TTL
 	CACHE_DIR = dest_root / ".searchcache"
+	if refresh:
+		# --refresh means "give me fresh data": expire every read,
+		# keep writing so the cache ends up repopulated.
+		CACHE_TTL = 0
 	USE_COLOR = not getattr(args, "no_color", False) and sys.stdout.isatty()
 	USE_AUR_RPC = bool(getattr(args, "aur_rpc", True))
 	FORCE_GIT_MIRROR = not USE_AUR_RPC
