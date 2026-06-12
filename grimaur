@@ -1348,7 +1348,17 @@ def remove_package(
 	noconfirm: bool,
 	remove_clone: bool,
 ) -> None:
-	# Check if package is installed
+	# Clone removal first: inspect/fetch also create clones, so one can
+	# exist for a package that was never installed.
+	if remove_clone:
+		package_dir = dest_root / package
+		if package_dir.exists():
+			print(f"Removing clone {package_dir}")
+			shutil.rmtree(package_dir)
+			print(f"Removed clone for {style(package, GREEN)}")
+		else:
+			print(f"No clone found at {package_dir}")
+
 	if not is_installed(package):
 		print(f"Package {style(package, BOLD)} is not installed")
 		return
@@ -1365,17 +1375,6 @@ def remove_package(
 		print(f"Successfully removed {style(package, GREEN)}")
 	except AurGitError as exc:
 		print(f"Failed to remove package: {exc}", file=sys.stderr)
-		return
-
-	# Optionally remove the clone
-	package_dir = dest_root / package
-	if remove_clone:
-		if package_dir.exists():
-			print(f"Removing clone {package_dir}")
-			shutil.rmtree(package_dir)
-			print(f"Removed clone for {style(package, GREEN)}")
-		else:
-			print(f"No clone found at {package_dir}")
 
 
 def get_ignored_packages() -> set[str]:
