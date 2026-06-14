@@ -598,15 +598,17 @@ def ensure_clone(
 
 	if repo_url:
 		remote_url = _maybe_ssh_rewrite(repo_url) if USE_SSH else repo_url
-		clone_extra: list[str]
+		clone_extra: list[str] = []
 		fetch_refspec: tuple[str, ...]
 		reset_targets: tuple[str, ...]
 		if branch:
-			clone_extra = ["--branch", branch, "--single-branch"]
+			# A bare commit SHA is rejected by `git clone --branch`, so clone the
+			# default head and check the ref out afterwards instead. Fetching the
+			# ref then resetting to FETCH_HEAD resolves a branch, tag, or reachable
+			# commit uniformly (origin/<ref> only exists for branches).
 			fetch_refspec = (branch,)
-			reset_targets = (f"origin/{branch}", "origin/HEAD")
+			reset_targets = ("FETCH_HEAD",)
 		else:
-			clone_extra = []
 			fetch_refspec = ()
 			reset_targets = ("origin/HEAD",)
 		recover_on_reset_fail = False
@@ -664,6 +666,10 @@ def ensure_clone(
 		clone_cmd += ["--depth=1"]
 	clone_cmd += [remote_url, str(package_dir)]
 	run_command(clone_cmd)
+
+	if repo_url and branch:
+		run_command(["git", "-C", str(package_dir), "fetch", "origin", branch])
+		_reset_git_worktree(package_dir, ("FETCH_HEAD",))
 
 	return _resolve_build_dir(package_dir, subdir)
 

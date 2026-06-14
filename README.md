@@ -41,6 +41,9 @@ Even see it directly: `python grimaur inspect brave-bin --target PKGBUILD` Also 
    - Pass `--clone` to delete the package's clone too
    - `grimaur remove --cache` drops the search result cache
 -  `grimaur install/fetch/inspect mypkg --repo-url <url>` to use custom URL instead
+   - Pass `--subdir <dir>` to build a package nested in a repo (monorepos with several PKGBUILDs)
+   - Pass `--branch <ref>` to clone a specific branch, tag, or commit
+   - A forge `tree`/`blob` URL fills both in: `--repo-url https://github.com/h8d13/archinstoo/tree/master/archinstoo`
 
 ### Stay Updated
 - `grimaur update` rebuilds every installed “foreign” package that has a newer release.
