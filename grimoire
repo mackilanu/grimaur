@@ -807,6 +807,15 @@ def _is_aur_origin(origin: str) -> bool:
 	return "archlinux/aur" in origin
 
 
+def _origin_label(package_dir: Path) -> str:
+	# Source label for `inspect --plain`'s Repository field: the clone's actual host
+	# (e.g. gitlab.archlinux.org), or "aur" for the AUR mirror / unknown origin.
+	origin = _clone_origin(package_dir)
+	if origin is None or _is_aur_origin(origin):
+		return "aur"
+	return _normalize_git_url(origin).split("/", 1)[0]
+
+
 def ensure_clone(
 	package: str,
 	dest_root: Path,
@@ -2502,7 +2511,9 @@ def _srcinfo_values(srcinfo_content: str, key: str) -> list[str]:
 	return [v for k, v in _iter_srcinfo_kv(srcinfo_content) if k == key and v]
 
 
-def srcinfo_info_fields(package: str, srcinfo_content: str) -> list[tuple[str, str]]:
+def srcinfo_info_fields(
+	package: str, srcinfo_content: str, repo: str = "aur"
+) -> list[tuple[str, str]]:
 	_, pkgdesc, deps = parse_dependencies(srcinfo_content)
 
 	def first(key: str) -> str | None:
@@ -2514,7 +2525,7 @@ def srcinfo_info_fields(package: str, srcinfo_content: str) -> list[tuple[str, s
 
 	version = _assemble_version(first("pkgver"), first("pkgrel"), first("epoch"))
 	return [
-		("Repository", "aur"),
+		("Repository", repo),
 		("Name", package),
 		("Version", version or "None"),
 		("Description", pkgdesc or "None"),
@@ -2609,7 +2620,9 @@ def inspect_package(
 
 	srcinfo = read_srcinfo(package_dir)
 	if plain:
-		print_info_fields(srcinfo_info_fields(package, srcinfo))
+		print_info_fields(
+			srcinfo_info_fields(package, srcinfo, _origin_label(package_dir))
+		)
 		return
 	_, pkgdesc, deps = parse_dependencies(srcinfo)
 	_print_info_summary(package, pkgdesc, deps, show_deps=show_deps)
