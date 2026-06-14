@@ -1,7 +1,7 @@
 import unittest
 from unittest import mock
 
-from grimaurshim import grimoire
+from grimoireshim import grimoire
 
 
 class BackendTriStateTests(unittest.TestCase):

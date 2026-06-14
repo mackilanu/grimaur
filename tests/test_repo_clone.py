@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from grimaurshim import grimoire
+from grimoireshim import grimoire
 
 
 def _git(repo: Path, *args: str) -> str:

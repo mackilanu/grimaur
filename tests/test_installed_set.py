@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from grimaurshim import grimoire
+from grimoireshim import grimoire
 
 
 class DbPathParseTests(unittest.TestCase):

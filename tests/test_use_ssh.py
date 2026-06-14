@@ -6,7 +6,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
-from grimaurshim import grimoire
+from grimoireshim import grimoire
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "use-ssh-nested" / "PKGBUILD"
 

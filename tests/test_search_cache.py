@@ -12,7 +12,7 @@ import urllib.request  # ensure loaded: grimoire imports it lazily, tests patch 
 from pathlib import Path
 from unittest import mock
 
-from grimaurshim import grimoire
+from grimoireshim import grimoire
 
 
 def _search_cache_key(pattern: str) -> str:

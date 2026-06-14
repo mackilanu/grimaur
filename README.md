@@ -3,10 +3,8 @@
 <img align="left" src="./base/assets/grimoire_d.svg#gh-light-mode-only" width="80" alt="grimoire logo">
 <img align="left" src="./base/assets/grimoire_l.svg#gh-dark-mode-only" width="80" alt="grimoire logo">
 
-`grimoire` is a lightweight package builder for Arch. It searches, builds, and updates
-AUR packages (RPC API with **automatic fallback to the official git mirror**), and
-because it just drives `makepkg`, it can build any `PKGBUILD` from any git source you
-point it at.
+`grimoire` is a lightweight package builder for Arch. It searches, builds, and updates packages
+because it just drives `makepkg`, it can build any `PKGBUILD` from any git source you point it at.
 <br clear="left">
 ## Install
 
@@ -82,7 +80,7 @@ AUR opt-in (a commented `[AUR]` section with RPC + git-mirror URLs).
 - For automating updates `grimoire update`:
    - Pass `--global --download`, download updates without installing `-Syuw`
    - Pass `--global --install`, to be used with command above `-Su`
-- Useful for scripting on top of Grimaur:
+- Useful for scripting on top of `grimoire`:
    - `--no-color` disables colored terminal output
    - `grimoire search <term> --limit 10` limits results to the first N matches
    - `grimoire search <term> --no-interactive` lists results without prompting to install

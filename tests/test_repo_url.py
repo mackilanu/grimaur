@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from grimaurshim import grimoire
+from grimoireshim import grimoire
 
 # Real archinstoo URLs (kept here, not in the README): a nested package whose
 # PKGBUILD lives in a subdir, pinned by branch and by commit.

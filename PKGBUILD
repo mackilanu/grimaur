@@ -4,7 +4,7 @@ pkgrel=1
 pkgdesc="Lightweight AUR helper that uses the official AUR git mirror"
 arch=('any')
 url="https://github.com/mackilanu/grimoire"
-_dev_url="https://github.com/h8d13/grimaur3"
+_dev_url="https://github.com/h8d13/grimoire"
 _dev_branch="dot-cache"
 
 license=('MIT')

@@ -3,7 +3,7 @@ import io
 import unittest
 import unittest.mock
 
-from grimaurshim import grimoire
+from grimoireshim import grimoire
 
 SAMPLE_RPC_INFO = {
 	"Name": "brave-bin",

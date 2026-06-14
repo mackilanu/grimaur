@@ -5,7 +5,7 @@ set -l commands fetch install remove update search inspect list
 
 # Complete AUR names from the cache grimoire writes alongside packages.json;
 # seed it in the background on first use.
-function __grimaur_aur_packages
+function __grimoire_aur_packages
     set -l cache_home $XDG_CACHE_HOME
     test -n "$cache_home"; or set cache_home ~/.cache
     set -l cache $cache_home/grimoire/completion.cache
@@ -17,7 +17,7 @@ function __grimaur_aur_packages
     end
 end
 
-function __grimaur_foreign_packages
+function __grimoire_foreign_packages
     pacman -Qmq 2>/dev/null
 end
 
@@ -71,5 +71,5 @@ complete -c grimoire -n '__fish_seen_subcommand_from inspect' -l full -d 'Includ
 complete -c grimoire -n '__fish_seen_subcommand_from list' -l aur -d 'List every AUR package (like -Sl aur)'
 
 # Package positionals
-complete -c grimoire -n '__fish_seen_subcommand_from install fetch inspect search' -a '(__grimaur_aur_packages)'
-complete -c grimoire -n '__fish_seen_subcommand_from remove update' -a '(__grimaur_foreign_packages)' -d 'installed'
+complete -c grimoire -n '__fish_seen_subcommand_from install fetch inspect search' -a '(__grimoire_aur_packages)'
+complete -c grimoire -n '__fish_seen_subcommand_from remove update' -a '(__grimoire_foreign_packages)' -d 'installed'

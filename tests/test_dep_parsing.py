@@ -7,7 +7,7 @@ Covers two coupled functions:
 
 import unittest
 
-from grimaurshim import grimoire
+from grimoireshim import grimoire
 
 
 class NormalizeDepTests(unittest.TestCase):

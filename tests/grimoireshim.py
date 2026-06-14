@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def load_grimaur() -> ModuleType:
+def load_grimoire() -> ModuleType:
 	path = REPO_ROOT / "grimoire"
 	spec = importlib.util.spec_from_file_location(
 		"grimoire", path, loader=SourceFileLoader("grimoire", str(path))
@@ -27,4 +27,4 @@ def load_grimaur() -> ModuleType:
 	return module
 
 
-grimoire = load_grimaur()
+grimoire = load_grimoire()

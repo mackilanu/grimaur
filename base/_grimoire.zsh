@@ -1,7 +1,7 @@
 #compdef grimoire 
-# file usr/share/zsh/site-functions/_grimaur
+# file usr/share/zsh/site-functions/_grimoire
 
-_grimaur() {
+_grimoire() {
     local curcontext="$curcontext" state line
     typeset -A opt_args
 
@@ -44,14 +44,14 @@ _grimaur() {
                         $global_opts \
                         '--force[Reclone even if directory exists]' \
                         '--repo-url[Clone from custom Git URL]:url:' \
-                        '1:package:_grimaur_aur_packages'
+                        '1:package:_grimoire_aur_packages'
                     ;;
                 install)
                     _arguments \
                         $global_opts \
                         '--noconfirm[Pass --noconfirm to pacman/makepkg]' \
                         '--repo-url[Clone from custom Git URL]:url:' \
-                        '1:package:_grimaur_aur_packages'
+                        '1:package:_grimoire_aur_packages'
                     ;;
                 remove)
                     _arguments \
@@ -59,7 +59,7 @@ _grimaur() {
                         '--noconfirm[Pass --noconfirm to pacman]' \
                         "--clone[Also remove the package's clone]" \
                         '--cache[Remove the search result cache]' \
-                        '1::package:_grimaur_foreign_packages'
+                        '1::package:_grimoire_foreign_packages'
                     ;;
                 update)
                     _arguments \
@@ -71,7 +71,7 @@ _grimaur() {
                         '--index[With --global, only sync package databases (pacman -Sy)]' \
                         '--download[With --global, download updates without installing (pacman -Syuw)]' \
                         '--install[With --global, install already-downloaded packages (pacman -Su)]' \
-                        '*:packages:_grimaur_foreign_packages'
+                        '*:packages:_grimoire_foreign_packages'
                     ;;
                 search)
                     _arguments \
@@ -80,7 +80,7 @@ _grimaur() {
                         '--no-interactive[Disable interactive selection]' \
                         '--noconfirm[Skip confirmation prompts]' \
                         '--plain[pacman -Ss style output for scripting]' \
-                        '1:pattern:_grimaur_aur_packages'
+                        '1:pattern:_grimoire_aur_packages'
                     ;;
                 inspect)
                     _arguments \
@@ -89,7 +89,7 @@ _grimaur() {
                         '--full[Include make/check/optional dependencies]' \
                         '--repo-url[Inspect package from custom Git URL]:url:' \
                         '--plain[pacman -Si style output for scripting]' \
-                        '1:package:_grimaur_aur_packages'
+                        '1:package:_grimoire_aur_packages'
                     ;;
                 list)
                     _arguments \
@@ -102,7 +102,7 @@ _grimaur() {
 }
 
 # Helper function to complete installed foreign packages
-_grimaur_foreign_packages() {
+_grimoire_foreign_packages() {
     local -a packages
     packages=(${(f)"$(pacman -Qmq 2>/dev/null)"})
     _describe -t packages 'installed package' packages
@@ -110,7 +110,7 @@ _grimaur_foreign_packages() {
 
 # Complete AUR names from the cache grimoire writes alongside packages.json;
 # prefix-grep instead of _describe: the full list is ~115k entries.
-_grimaur_aur_packages() {
+_grimoire_aur_packages() {
     local cache="${XDG_CACHE_HOME:-$HOME/.cache}/grimoire/completion.cache"
     if [[ -r "$cache" ]]; then
         local -a packages
@@ -121,4 +121,4 @@ _grimaur_aur_packages() {
     fi
 }
 
-_grimaur "$@"
+_grimoire "$@"

@@ -5,7 +5,7 @@ pkgver=0.0.1
 pkgrel=1
 pkgdesc="Fixture for grimoire --use-ssh propagation to PKGBUILD source git+https URLs"
 arch=('any')
-url="https://github.com/h8d13/grimaur3"
+url="https://github.com/h8d13/grimoire"
 license=('MIT')
 source=(
 	"git+https://github.com/foo/bar.git"

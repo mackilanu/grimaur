@@ -1,7 +1,7 @@
 # Bash completion for grimoire helper
 # Source this file or place it in bash_completion.d to enable `grimoire` completions.
 
-_grimaur_completion()
+_grimoire_completion()
 {
     local cur prev words cword
     if ! _init_completion -n = 2>/dev/null; then
@@ -110,4 +110,4 @@ _grimaur_completion()
     esac
 }
 
-complete -F _grimaur_completion grimoire
+complete -F _grimoire_completion grimoire
