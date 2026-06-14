@@ -60,8 +60,8 @@ The default source is the AUR. Point grimaur at anything else that ships a `PKGB
    grimaur install <pkg> --repo arch   # builds an official package from source
    ```
 
-The package name selects the source: a branch on the AUR mirror, or a repo/subdir via
-`{pkg}` and monorepo layout.
+Package names selects the source: branch on the AUR mirror, or repo/subdir via
+`{pkg}` or  monorepo layout.
 
 ### Stay Updated
 - `grimaur update` rebuilds every installed “foreign” package that has a newer release.
