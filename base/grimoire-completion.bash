@@ -52,7 +52,7 @@ _grimoire_completion()
                 opts="$global_opts --limit --no-interactive --noconfirm --plain --repo-url --repo --subdir --branch"
                 ;;
             inspect)
-                opts="$global_opts --target --full --repo-url --repo --subdir --branch --plain"
+                opts="$global_opts --target --repo-url --repo --subdir --branch --plain"
                 ;;
             list)
                 opts="$global_opts --aur"

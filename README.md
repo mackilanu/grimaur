@@ -39,7 +39,7 @@ Also accepts: `SRCINFO`
 
 `inspect`, `install`, `fetch`, and `remove` accept one or more packages (`grimoire install a b c`).
 
-- `grimoire inspect <package> --full` Shows full depends
+- `grimoire inspect <package>` shows description + all deps (make/check/optional)
 - `grimoire install <package>` clones the repo, resolves dependencies, builds with `makepkg`
    - Pass `--use-ssh` use SSH instead of HTTPS
 - `grimoire remove <package>` to uninstall from pacman

@@ -92,7 +92,6 @@ _grimoire() {
                         $global_opts \
                         $source_opts \
                         '--target[Which data to show]:target:(info PKGBUILD SRCINFO)' \
-                        '--full[Include make/check/optional dependencies]' \
                         '--plain[Plain pacman-style output for scripting]' \
                         '1:package:_grimoire_aur_packages'
                     ;;
