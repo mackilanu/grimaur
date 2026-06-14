@@ -47,15 +47,15 @@ Also accepts: `SRCINFO`
 The default source is the top section of `repos.conf` (auto-seeded to `[ARCH]`; see below).
 Point at anything else that ships a `PKGBUILD` with `--repo-url`/`--repo` on
 `install`, `fetch`, `inspect`, `search`, and `update`:
-   - `--repo-url <url>` builds from a git URL (scheme optional: `github.com/u/r` works).
+   - `--repo-url <url>` builds from a git URL (scheme optional: `provider.ext/u/r` works).
    - `--branch <ref>` / `--subdir <dir>` pick a ref, or a package nested in a monorepo
    - `repo --add <url> <name>` saves an alias; use it with `--repo <name>`.
    - Add more URLs under the same name for fallback mirrors. `--ls`/`--rm` to manage. Saved to `~/.config/grimoire/repos.conf`
    - `{pkg}` (the package name) or `{pkgbase}` (its pkgbase, looked up from the pacman sync DBs)
 
    ```bash
-   grimoire repo --add 'https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git' arch
-   grimoire install <pkg> --repo arch   # builds an official package from source
+   grimoire repo --add 'https://github.com/h8d13/VUR/tree/master/pkgs' VUR
+   grimoire install <pkg> --repo VUR   # builds from custom repo
    ```
 A bare `search <term>` queries **every** section in `repos.conf` and merges the results (like `pacman -Ss`, each labeled by source), so an enabled alias shows up without `--repo`. `search --repo <name>` scopes to one (a package-per-dir subdir, branches, or the local sync DBs for a `{pkgbase}` template). Installing a result builds it from the source it was found in.
 

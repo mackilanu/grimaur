@@ -227,38 +227,13 @@ class ResolvePackageDirTests(unittest.TestCase):
 		)
 
 
-class OfficialRepoRegexTests(unittest.TestCase):
-	def test_matches_official_repos(self) -> None:
-		for repo in (
-			"core",
-			"extra",
-			"multilib",
-			"core-testing",
-			"extra-staging",
-			"multilib-testing",
-			"gnome-unstable",
-			"kde-unstable",
-		):
-			with self.subTest(repo=repo):
-				self.assertTrue(grimoire._OFFICIAL_REPO_RE.match(repo))
-
-	def test_rejects_third_party_repos(self) -> None:
-		for repo in ("cachyos", "cachyos-v3", "myrepo", "core-extra", "aur"):
-			with self.subTest(repo=repo):
-				self.assertIsNone(grimoire._OFFICIAL_REPO_RE.match(repo))
-
-
-class SyncDbRepoTests(unittest.TestCase):
-	def test_prefers_official_over_third_party(self) -> None:
-		fake = (
-			("mesa", "1", "d", "cachyos"),
-			("mesa", "1", "d", "extra"),
-			("vscodium", "1", "d", "cachyos"),
-		)
+class InSyncDbTests(unittest.TestCase):
+	def test_true_when_package_in_a_sync_repo(self) -> None:
+		fake = (("vscodium", "1", "d", "cachyos"), ("bash", "5", "d", "core"))
 		with mock.patch.object(grimoire, "_sync_db_packages", return_value=fake):
-			self.assertEqual(grimoire._sync_db_repo("mesa"), "extra")
-			self.assertEqual(grimoire._sync_db_repo("vscodium"), "cachyos")
-			self.assertIsNone(grimoire._sync_db_repo("not-here"))
+			self.assertTrue(grimoire._in_sync_db("vscodium"))
+			self.assertTrue(grimoire._in_sync_db("bash"))
+			self.assertFalse(grimoire._in_sync_db("not-here"))
 
 
 class ResolvePkgbaseTests(unittest.TestCase):

@@ -9,7 +9,7 @@ Or official Arch Linux packages from their Gitlab.
 grimoire can recursively resolve and install dependencies by building packages locally with
 makepkg. Official repository dependencies are installed with pacman when they are missing.
 
-In a single truth python file.
+	In a single truth python file.
 
       __...--~~~~~-._   _.-~~~~~--...__
     //               `V'               \\
@@ -50,7 +50,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-	from collections.abc import Callable, Iterable, Sequence
+	from collections.abc import Callable, Iterable, Iterator, Sequence
 
 
 __version__ = "dev"
@@ -97,12 +97,7 @@ _PACMAN_AUTH_RE = re.compile(r'^\s*PACMAN_AUTH\s*=\s*\(?\s*"?([^"\s)]+)"?')
 _PACMAN_DBPATH_RE = re.compile(r"^\s*DBPath\s*=\s*(\S+)")
 _DEP_SPLIT_RE = re.compile(r"[<>~=]+")
 _DESC_FIELD_RE = re.compile(r"%(\w+)%\n([^\n]*)")
-# Official Arch repos -- the ones the Arch GitLab packaging covers, so a sync-DB
-# search result from one is buildable via the {pkgbase} alias. A result from any other
-# repo (cachyos, custom) is a third-party binary and is installed with pacman -S.
-_OFFICIAL_REPO_RE = re.compile(
-	r"^(core|extra|multilib)(-testing|-staging)?$|^(gnome|kde)-unstable$"
-)
+_HOSTISH_RE = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)+$", re.IGNORECASE)
 
 
 _SRCINFO_KEYS = {
@@ -138,14 +133,109 @@ SSH_REWRITE_HOSTS = {
 }
 
 
+# Written on first use when no repos.conf exists. Default source is [ARCH] (build
+# official packages from source); the AUR is opt-in (commented out).
+_DEFAULT_REPOS_CONF = """\
+# grimoire repo aliases. The first (top) section is the default source when you don't
+# pass --repo; --repo <NAME> overrides per command. Manage with `grimoire repo`.
+# In a URL, {pkg} = package name, {pkgbase} = its pkgbase (from the pacman sync DBs).
+
+# Default: Arch's official packages (one repo per pkgbase on the Arch GitLab), so a
+# bare `grimoire install <pkg>` builds the official package from source.
+[ARCH]
+  https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git
+
+# The AUR (RPC API + git mirror). Opt-in: uncomment and move above [ARCH] to make it
+# the default backend again.
+#[AUR]
+#  https://aur.archlinux.org/rpc/
+#  https://github.com/archlinux/aur.git
+"""
+
+
+@dataclass(frozen=True)
+class DependencySet:
+	depends: set[str]
+	makedepends: set[str]
+	checkdepends: set[str]
+	optdepends: set[str]
+
+	@property
+	def all_build_deps(self) -> set[str]:
+		return self.depends | self.makedepends
+
+
+@dataclass(frozen=True)
+class SearchResult:
+	name: str
+	version: str | None
+	description: str | None
+	installed: bool
+	score: int
+	votes: int | None = None
+	is_orphan: bool | None = None
+	# Display label for the source repo (alias/URL); None means the AUR.
+	source: str | None = None
+	# True when sourced from a local pacman sync DB (label as `db`, not a protocol).
+	from_db: bool = False
+	# Conf alias this result can be installed from (None = the AUR/default backend).
+	# Distinct from `source`: sync-DB results display their pacman repo but install
+	# via their alias (e.g. display "core", install via "ARCH").
+	repo_alias: str | None = None
+
+
+@dataclass(frozen=True)
+class UpdateCandidate:
+	name: str
+	installed_version: str | None
+	target_version: str | None
+	remote_head: str | None
+	local_head: str | None
+
+
+class AurGitError(RuntimeError):
+	"""Wraps fatal errors coming from the helper."""
+
+
+class AurRpcForcedError(RuntimeError):
+	"""RPC failed under --aur-rpc.
+
+	Deliberately not an AurGitError: callers swallow that as the
+	git-mirror fallback signal, and forced mode must not fall back.
+	"""
+
+
 def get_aur_remote() -> str:
 	url = AUR_GIT_MIRROR or "https://github.com/archlinux/aur.git"
-	return _maybe_ssh_rewrite(url) if USE_SSH else url
+	return _remote_for(url)
 
 
 def get_official_aur_git_base() -> str:
 	url = "https://aur.archlinux.org"
-	return _maybe_ssh_rewrite(url) if USE_SSH else url
+	return _remote_for(url)
+
+
+def _aur_mirror_lsremote_cmd(*patterns: str) -> list[str]:
+	return ["git", "ls-remote", "--heads", get_aur_remote(), *patterns]
+
+
+def _lsremote_first_sha(output: object) -> str | None:
+	for line in str(output).splitlines():
+		parts = line.split()
+		if parts:
+			return parts[0]
+	return None
+
+
+def _lsremote_names(output: object) -> list[str]:
+	# Short ref names from `git ls-remote` lines (`<sha>\t<ref>` -> last ref segment),
+	# skipping lines that aren't exactly sha+ref.
+	names: list[str] = []
+	for line in str(output).splitlines():
+		parts = line.split()
+		if len(parts) == 2:
+			names.append(parts[1].split("/")[-1])
+	return names
 
 
 def _xdg_config_home() -> Path:
@@ -172,39 +262,53 @@ def _pacman_db_path() -> Path:
 	return Path("/var/lib/pacman")
 
 
+def _iter_sync_db_desc(
+	name_prefix: str | None = None,
+) -> Iterator[tuple[str, dict[str, str]]]:
+	# Walk the pacman sync DBs yielding (repo, desc-fields) for every package `desc`
+	# entry. DBs may be gzip (Arch) or zstd (CachyOS); `r:*` autodetects. name_prefix
+	# skips members whose dir doesn't start with it before the parse (fast path for a
+	# single-package lookup).
+	import tarfile
+
+	sync = _pacman_db_path() / "sync"
+	try:
+		dbs = sorted(sync.glob("*.db"))
+	except OSError:
+		return
+	for db in dbs:
+		repo = db.stem
+		try:
+			with tarfile.open(db, "r:*") as tar:
+				for member in tar:
+					name = member.name
+					if not name.endswith("/desc"):
+						continue
+					if name_prefix is not None and not name.startswith(name_prefix):
+						continue
+					extracted = tar.extractfile(member)
+					if extracted is None:
+						continue
+					yield (
+						repo,
+						dict(
+							_DESC_FIELD_RE.findall(
+								extracted.read().decode("utf-8", "replace")
+							)
+						),
+					)
+		except OSError, tarfile.TarError:
+			continue
+
+
 @cache
 def _resolve_pkgbase(package: str) -> str:
 	# pkgname -> pkgbase via the pacman sync DBs (each `desc` carries %BASE%). Lets a
 	# pkgbase-keyed forge (Arch GitLab, the AUR) be reached by package name even for
 	# split packages (amd-ucode -> linux-firmware). Falls back to the name if unknown.
-	# DBs may be gzip (Arch) or zstd (CachyOS); `r:*` autodetects.
-	import tarfile
-
-	sync = _pacman_db_path() / "sync"
-	prefix = f"{package}-"
-	try:
-		dbs = sorted(sync.glob("*.db"))
-	except OSError:
-		return package
-	for db in dbs:
-		try:
-			with tarfile.open(db, "r:*") as tar:
-				for member in tar:
-					name = member.name
-					if not name.endswith("/desc") or not name.startswith(prefix):
-						continue
-					extracted = tar.extractfile(member)
-					if extracted is None:
-						continue
-					fields = dict(
-						_DESC_FIELD_RE.findall(
-							extracted.read().decode("utf-8", "replace")
-						)
-					)
-					if fields.get("NAME") == package:
-						return fields.get("BASE") or package
-		except OSError, tarfile.TarError:
-			continue
+	for _repo, fields in _iter_sync_db_desc(f"{package}-"):
+		if fields.get("NAME") == package:
+			return fields.get("BASE") or package
 	return package
 
 
@@ -215,48 +319,17 @@ def _sync_db_packages() -> tuple[tuple[str, str | None, str | None, str], ...]:
 	# DB name (core/extra/cachyos/...) so results read like `pacman -Ss`; official
 	# repos build from the alias's source, third-party repos install via pacman -S
 	# (see the search install loop). Every repo copy is listed (no dedup). gzip + zstd.
-	import tarfile
-
-	sync = _pacman_db_path() / "sync"
-	try:
-		dbs = sorted(sync.glob("*.db"))
-	except OSError:
-		return ()
 	out: list[tuple[str, str | None, str | None, str]] = []
-	for db in dbs:
-		repo = db.stem
-		try:
-			with tarfile.open(db, "r:*") as tar:
-				for member in tar:
-					if not member.name.endswith("/desc"):
-						continue
-					extracted = tar.extractfile(member)
-					if extracted is None:
-						continue
-					fields = dict(
-						_DESC_FIELD_RE.findall(
-							extracted.read().decode("utf-8", "replace")
-						)
-					)
-					name = fields.get("NAME")
-					if name:
-						out.append(
-							(name, fields.get("VERSION"), fields.get("DESC"), repo)
-						)
-		except OSError, tarfile.TarError:
-			continue
+	for repo, fields in _iter_sync_db_desc():
+		name = fields.get("NAME")
+		if name:
+			out.append((name, fields.get("VERSION"), fields.get("DESC"), repo))
 	return tuple(out)
 
 
-def _sync_db_repo(package: str) -> str | None:
-	# The pacman repo a package lives in, preferring an official repo when it's in
-	# several (so an official package builds from source rather than -S'ing a
-	# third-party rebuild). None if not in any sync DB.
-	repos = [repo for name, _v, _d, repo in _sync_db_packages() if name == package]
-	for repo in repos:
-		if _OFFICIAL_REPO_RE.match(repo):
-			return repo
-	return repos[0] if repos else None
+def _in_sync_db(package: str) -> bool:
+	# True if pacman has this package in a synced repo (so `pacman -S` can install it).
+	return any(name == package for name, _v, _d, _r in _sync_db_packages())
 
 
 def _read_pacman_auth() -> str | None:
@@ -307,7 +380,26 @@ def _maybe_ssh_rewrite(url: str) -> str:
 	return f"ssh://{user}@{parsed.netloc}/{path}"
 
 
-_HOSTISH_RE = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)+$", re.IGNORECASE)
+def _remote_for(url: str) -> str:
+	return _maybe_ssh_rewrite(url) if USE_SSH else url
+
+
+# Mirror SSH_REWRITE_HOSTS as git insteadOf rules via GIT_CONFIG_* env vars
+# this make the ssh only rule persist even if invoked by a child PKGBUILD/process
+def _ssh_rewrite_git_env() -> dict[str, str]:
+	pairs: list[tuple[str, str]] = [
+		(
+			f"url.ssh://{user}@{host}/.insteadOf",
+			f"{scheme}://{host}/",
+		)
+		for host, user in SSH_REWRITE_HOSTS.items()
+		for scheme in ("https", "http")
+	]
+	env = {"GIT_CONFIG_COUNT": str(len(pairs))}
+	for i, (key, value) in enumerate(pairs):
+		env[f"GIT_CONFIG_KEY_{i}"] = key
+		env[f"GIT_CONFIG_VALUE_{i}"] = value
+	return env
 
 
 def _ensure_scheme(url: str) -> str:
@@ -374,26 +466,6 @@ def parse_repo_url(url: str) -> tuple[str, str | None, str | None]:
 
 def _repo_registry_path() -> Path:
 	return _xdg_config_home() / "grimoire" / "repos.conf"
-
-
-# Written on first use when no repos.conf exists. Default source is [ARCH] (build
-# official packages from source); the AUR is opt-in (commented out).
-_DEFAULT_REPOS_CONF = """\
-# grimoire repo aliases. The first (top) section is the default source when you don't
-# pass --repo; --repo <NAME> overrides per command. Manage with `grimoire repo`.
-# In a URL, {pkg} = package name, {pkgbase} = its pkgbase (from the pacman sync DBs).
-
-# Default: Arch's official packages (one repo per pkgbase on the Arch GitLab), so a
-# bare `grimoire install <pkg>` builds the official package from source.
-[ARCH]
-  https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git
-
-# The AUR (RPC API + git mirror). Opt-in: uncomment and move above [ARCH] to make it
-# the default backend again.
-#[AUR]
-#  https://aur.archlinux.org/rpc/
-#  https://github.com/archlinux/aur.git
-"""
 
 
 def _ensure_repos_conf() -> None:
@@ -481,24 +553,6 @@ def _default_repo() -> str | None:
 	return None
 
 
-# Mirror SSH_REWRITE_HOSTS as git insteadOf rules via GIT_CONFIG_* env vars
-# this make the ssh only rule persist even if invoked by a child PKGBUILD/process
-def _ssh_rewrite_git_env() -> dict[str, str]:
-	pairs: list[tuple[str, str]] = [
-		(
-			f"url.ssh://{user}@{host}/.insteadOf",
-			f"{scheme}://{host}/",
-		)
-		for host, user in SSH_REWRITE_HOSTS.items()
-		for scheme in ("https", "http")
-	]
-	env = {"GIT_CONFIG_COUNT": str(len(pairs))}
-	for i, (key, value) in enumerate(pairs):
-		env[f"GIT_CONFIG_KEY_{i}"] = key
-		env[f"GIT_CONFIG_VALUE_{i}"] = value
-	return env
-
-
 def style(text: str, *codes: str) -> str:
 	if not USE_COLOR or not codes:
 		return text
@@ -552,58 +606,6 @@ def is_debug_package(name: str) -> bool:
 
 def is_vcs_package(name: str) -> bool:
 	return any(name.endswith(suffix) for suffix in _VCS_SUFFIXES)
-
-
-class AurGitError(RuntimeError):
-	"""Wraps fatal errors coming from the helper."""
-
-
-class AurRpcForcedError(RuntimeError):
-	"""RPC failed under --aur-rpc.
-
-	Deliberately not an AurGitError: callers swallow that as the
-	git-mirror fallback signal, and forced mode must not fall back.
-	"""
-
-
-@dataclass(frozen=True)
-class DependencySet:
-	depends: set[str]
-	makedepends: set[str]
-	checkdepends: set[str]
-	optdepends: set[str]
-
-	@property
-	def all_build_deps(self) -> set[str]:
-		return self.depends | self.makedepends
-
-
-@dataclass(frozen=True)
-class SearchResult:
-	name: str
-	version: str | None
-	description: str | None
-	installed: bool
-	score: int
-	votes: int | None = None
-	is_orphan: bool | None = None
-	# Display label for the source repo (alias/URL); None means the AUR.
-	source: str | None = None
-	# True when sourced from a local pacman sync DB (label as `db`, not a protocol).
-	from_db: bool = False
-	# Conf alias this result can be installed from (None = the AUR/default backend).
-	# Distinct from `source`: sync-DB results display their pacman repo but install
-	# via their alias (e.g. display "core", install via "ARCH").
-	repo_alias: str | None = None
-
-
-@dataclass(frozen=True)
-class UpdateCandidate:
-	name: str
-	installed_version: str | None
-	target_version: str | None
-	remote_head: str | None
-	local_head: str | None
 
 
 def cache_get(key: str, ttl: int) -> str | None:
@@ -837,7 +839,7 @@ def _clone_with_fallback(
 	# mirror's own subdir resolves the build dir. Used only for a fresh clone.
 	errors: list[str] = []
 	for index, (url, branch, subdir) in enumerate(candidates):
-		remote_url = _maybe_ssh_rewrite(url) if USE_SSH else url
+		remote_url = _remote_for(url)
 		if package_dir.exists():
 			shutil.rmtree(package_dir)
 		clone_cmd = ["git", "clone"]
@@ -921,7 +923,7 @@ def ensure_clone(
 			)
 
 	if repo_url:
-		remote_url = _maybe_ssh_rewrite(repo_url) if USE_SSH else repo_url
+		remote_url = _remote_for(repo_url)
 		clone_extra: list[str] = []
 		fetch_refspec: tuple[str, ...]
 		reset_targets: tuple[str, ...]
@@ -1028,6 +1030,38 @@ def read_srcinfo(package_dir: Path) -> str:
 	return str(output)
 
 
+def _iter_srcinfo_kv(srcinfo_content: str) -> Iterator[tuple[str, str]]:
+	# Yield (key, value) for each `key = value` line of a .SRCINFO, stripped, skipping
+	# blanks and comments. makepkg always emits the spaced form.
+	for raw_line in srcinfo_content.splitlines():
+		line = raw_line.strip()
+		if not line or line.startswith("#") or "=" not in line:
+			continue
+		key, value = (part.strip() for part in line.split("=", 1))
+		yield key, value
+
+
+def _str_or_none(value: object) -> str | None:
+	return value if isinstance(value, str) else None
+
+
+def _assemble_version(
+	pkgver: str | None, pkgrel: str | None, epoch: str | None
+) -> str | None:
+	# Compose epoch:pkgver-pkgrel, suppressing an absent/zero epoch. None when nothing
+	# version-like is present.
+	if not (pkgver or pkgrel or epoch):
+		return None
+	parts: list[str] = []
+	if epoch and epoch not in {"", "0"}:
+		parts.append(f"{epoch}:")
+	if pkgver:
+		parts.append(pkgver)
+	if pkgrel and pkgver:
+		parts.append(f"-{pkgrel}")
+	return "".join(parts) or None
+
+
 def parse_dependencies(srcinfo_content: str) -> tuple[str, str | None, DependencySet]:
 	pkgbase = ""
 	pkgdesc = None
@@ -1036,13 +1070,7 @@ def parse_dependencies(srcinfo_content: str) -> tuple[str, str | None, Dependenc
 	checkdepends: set[str] = set()
 	optdepends: set[str] = set()
 
-	for raw_line in srcinfo_content.splitlines():
-		line = raw_line.strip()
-		if not line or line.startswith("#"):
-			continue
-		if "=" not in line:
-			continue
-		key, value = (part.strip() for part in line.split("=", 1))
+	for key, value in _iter_srcinfo_kv(srcinfo_content):
 		if key not in _SRCINFO_KEYS:
 			continue
 		if key == "pkgbase" and not pkgbase:
@@ -1091,15 +1119,8 @@ def _pkgbase_guesses(dep: str) -> list[str]:
 
 
 def _parse_srcinfo_metadata(srcinfo_content: str) -> tuple[str | None, str | None]:
-	pkgver = None
-	pkgrel = None
-	epoch = None
-	description = None
-	for raw_line in srcinfo_content.splitlines():
-		line = raw_line.strip()
-		if not line or "=" not in line:
-			continue
-		key, value = (part.strip() for part in line.split("=", 1))
+	pkgver = pkgrel = epoch = description = None
+	for key, value in _iter_srcinfo_kv(srcinfo_content):
 		if key == "pkgver" and not pkgver:
 			pkgver = value
 		elif key == "pkgrel" and not pkgrel:
@@ -1108,18 +1129,7 @@ def _parse_srcinfo_metadata(srcinfo_content: str) -> tuple[str | None, str | Non
 			epoch = value
 		elif key == "pkgdesc" and not description:
 			description = value
-	if pkgver or pkgrel or epoch:
-		version_parts: list[str] = []
-		if epoch and epoch not in {"", "0"}:
-			version_parts.append(f"{epoch}:")
-		if pkgver:
-			version_parts.append(pkgver)
-		if pkgrel and pkgver:
-			version_parts.append(f"-{pkgrel}")
-		version = "".join(version_parts) if version_parts else None
-	else:
-		version = None
-	return version, description
+	return _assemble_version(pkgver, pkgrel, epoch), description
 
 
 def _reset_git_worktree(package_dir: Path, refs: Sequence[str]) -> None:
@@ -1244,19 +1254,7 @@ def exists_in_sync_repo(package: str) -> bool:
 
 
 def is_dependency_satisfied(dep: str) -> bool:
-	try:
-		proc = subprocess.run(  # noqa: S603 - dep is a package name, not untrusted input
-			["pacman", "-T", dep],  # noqa: S607 - pacman resolved via PATH
-			stdout=subprocess.DEVNULL,
-			stderr=subprocess.DEVNULL,
-			text=True,
-			check=False,
-		)
-	except FileNotFoundError as exc:
-		raise AurGitError(
-			"pacman command not found; this tool must run on Arch Linux"
-		) from exc
-	return proc.returncode == 0
+	return _pacman_returns_zero(["pacman", "-T", dep])
 
 
 @cache
@@ -1287,12 +1285,8 @@ def package_provides(package: str) -> set[str] | None:
 	srcinfo = fetch_git_file(package, ".SRCINFO")
 	if not srcinfo:
 		return provides or None
-	for raw_line in srcinfo.splitlines():
-		line = raw_line.strip()
-		if not line or "=" not in line:
-			continue
-		key, value = (part.strip() for part in line.split("=", 1))
-		if key == "pkgname" or key == "provides":
+	for key, value in _iter_srcinfo_kv(srcinfo):
+		if key in ("pkgname", "provides"):
 			normalized = _normalize_dep(value)
 			if normalized:
 				provides.add(normalized)
@@ -1315,18 +1309,10 @@ def _search_aur_candidates(dep: str, *, limit: int = 25) -> list[str]:
 	results = []
 	for pattern in patterns:
 		try:
-			output = run_command(
-				["git", "ls-remote", "--heads", get_aur_remote(), pattern],
-				capture=True,
-			)
+			output = run_command(_aur_mirror_lsremote_cmd(pattern), capture=True)
 		except AurGitError:
 			continue
-		for raw_line in str(output).splitlines():
-			parts = raw_line.split()
-			if len(parts) != 2:
-				continue
-			ref = parts[1]
-			name = ref.split("/")[-1]
+		for name in _lsremote_names(output):
 			if not name or name in seen:
 				continue
 			seen.add(name)
@@ -1428,16 +1414,7 @@ def exists_in_aur_mirror(package: str) -> bool:
 		if USE_AUR_RPC:
 			return False
 	try:
-		output = run_command(
-			[
-				"git",
-				"ls-remote",
-				"--heads",
-				get_aur_remote(),
-				package,
-			],
-			capture=True,
-		)
+		output = run_command(_aur_mirror_lsremote_cmd(package), capture=True)
 	except AurGitError:
 		return False
 	return bool(str(output).strip())
@@ -1474,16 +1451,13 @@ def get_local_head(package_dir: Path) -> str | None:
 
 
 def _git_remote_head(url: str, ref: str | None) -> str | None:
-	remote = _maybe_ssh_rewrite(url) if USE_SSH else url
 	try:
-		output = run_command(["git", "ls-remote", remote, ref or "HEAD"], capture=True)
+		output = run_command(
+			["git", "ls-remote", _remote_for(url), ref or "HEAD"], capture=True
+		)
 	except AurGitError:
 		return None
-	for line in str(output).splitlines():
-		parts = line.split()
-		if parts:
-			return parts[0]
-	return None
+	return _lsremote_first_sha(output)
 
 
 def get_remote_head(package: str) -> str | None:
@@ -1499,26 +1473,10 @@ def get_remote_head(package: str) -> str | None:
 				capture=True,
 			)
 		else:
-			output = run_command(
-				[
-					"git",
-					"ls-remote",
-					"--heads",
-					get_aur_remote(),
-					package,
-				],
-				capture=True,
-			)
+			output = run_command(_aur_mirror_lsremote_cmd(package), capture=True)
 	except AurGitError:
 		return None
-	for line in str(output).splitlines():
-		parts = line.split()
-		if not parts:
-			continue
-		sha = parts[0]
-		if sha:
-			return sha
-	return None
+	return _lsremote_first_sha(output)
 
 
 def get_installed_version(package: str) -> str | None:
@@ -1598,13 +1556,10 @@ def git_srcinfo_metadata(package: str) -> tuple[str, str | None] | None:
 		info = aur_rpc_info(package)
 		if not info:
 			return None
-		version = info.get("Version")
-		description = info.get("Description")
-		if isinstance(version, str) or isinstance(description, str):
-			version_result = version if isinstance(version, str) else None
-			description_result = description if isinstance(description, str) else None
-			if version_result is not None:  # Only return if version is valid
-				return (version_result, description_result)
+		version_result = _str_or_none(info.get("Version"))
+		description_result = _str_or_none(info.get("Description"))
+		if version_result is not None:  # Only return if version is valid
+			return (version_result, description_result)
 		# fallback to raw .SRCINFO if fields missing
 	srcinfo = fetch_git_file(package, ".SRCINFO")
 	if not srcinfo:
@@ -1712,6 +1667,7 @@ def install_package(
 	subdir: str | None = None,
 	repo_fallbacks: list[tuple[str, str | None, str | None]] | None = None,
 	update_to: str | None = None,
+	pacman_fallback: bool = False,
 ) -> None:
 	visited = visited or set()
 	if package in visited:
@@ -1738,16 +1694,28 @@ def install_package(
 	package_dir: Path | None = None
 	info: dict[str, object] | None = None
 	if repo_url:
-		# Skip AUR RPC when using custom repo URL
-		package_dir = ensure_clone(
-			package,
-			dest_root,
-			refresh=refresh,
-			repo_url=repo_url,
-			branch=branch,
-			subdir=subdir,
-			repo_fallbacks=repo_fallbacks,
-		)
+		# Skip AUR RPC when using a custom repo URL. If the source doesn't carry this
+		# package (clone fails) but pacman has it as a prebuilt, install that instead
+		# of erroring -- e.g. a cachyos binary not on the Arch GitLab default.
+		try:
+			package_dir = ensure_clone(
+				package,
+				dest_root,
+				refresh=refresh,
+				repo_url=repo_url,
+				branch=branch,
+				subdir=subdir,
+				repo_fallbacks=repo_fallbacks,
+			)
+		except AurGitError:
+			if pacman_fallback and _in_sync_db(package):
+				print(
+					f"==> {package} not in the source repo; installing the prebuilt "
+					"with pacman"
+				)
+				install_official_packages([package], noconfirm=noconfirm)
+				return
+			raise
 	elif USE_AUR_RPC:
 		info = aur_rpc_info(package)
 		if info is None and USE_AUR_RPC:
@@ -2199,19 +2167,8 @@ def _fetch_names_gz() -> list[str] | None:
 
 
 def _fetch_names_git() -> list[str] | None:
-	output = run_command(
-		["git", "ls-remote", "--heads", get_aur_remote()], capture=True
-	)
-	names: list[str] = []
-	for line in str(output).splitlines():
-		if not line.strip():
-			continue
-		try:
-			_, ref = line.split()
-		except ValueError:
-			continue
-		names.append(ref.split("/")[-1])
-	return names or None
+	output = run_command(_aur_mirror_lsremote_cmd(), capture=True)
+	return _lsremote_names(output) or None
 
 
 def _fetch_aur_package_names() -> list[str] | None:
@@ -2299,8 +2256,8 @@ def search_packages_git(
 		)
 		if isinstance(meta, (list, tuple)) and len(meta) == 2:
 			raw_version, raw_description = meta
-			version = raw_version if isinstance(raw_version, str) else None
-			description = raw_description if isinstance(raw_description, str) else None
+			version = _str_or_none(raw_version)
+			description = _str_or_none(raw_description)
 		return SearchResult(
 			name=package,
 			version=version,
@@ -2359,7 +2316,7 @@ def _repo_package_names(
 	# subdir-container (one dir per package under <subdir>) needs a clone to list
 	# files; branch-per-package is read straight off `git ls-remote`. Templated
 	# ({pkg}) aliases have no index and are rejected by the caller.
-	remote = _maybe_ssh_rewrite(repo_url) if USE_SSH else repo_url
+	remote = _remote_for(repo_url)
 	if subdir:
 		clone_cmd = ["git", "clone", "--depth=1"]
 		if branch:
@@ -2371,12 +2328,7 @@ def _repo_package_names(
 			raise AurGitError(f"Subdirectory '{subdir}' not found in {repo_url}")
 		return sorted((p.parent.name, p.parent) for p in base.glob("*/PKGBUILD"))
 	output = run_command(["git", "ls-remote", "--heads", remote], capture=True)
-	names: list[tuple[str, Path | None]] = []
-	for line in str(output).splitlines():
-		parts = line.split()
-		if len(parts) == 2:
-			names.append((parts[1].split("/")[-1], None))
-	return sorted(set(names))
+	return sorted({(name, None) for name in _lsremote_names(output)})
 
 
 def search_packages_repo(
@@ -2481,10 +2433,8 @@ def search_packages_rpc(
 		name_value = entry.get("Name")
 		if not isinstance(name_value, str):
 			continue
-		raw_version = entry.get("Version")
-		version = raw_version if isinstance(raw_version, str) else None
-		raw_description = entry.get("Description")
-		description = raw_description if isinstance(raw_description, str) else None
+		version = _str_or_none(entry.get("Version"))
+		description = _str_or_none(entry.get("Description"))
 		votes = None
 		votes_value = entry.get("NumVotes")
 		if isinstance(votes_value, int | float | str):
@@ -2690,10 +2640,15 @@ def _format_epoch(value: object) -> str | None:
 	return None
 
 
+def _join_values(values: Iterable[str], *, sort: bool = False) -> str:
+	items = sorted(values) if sort else list(values)
+	return "  ".join(items) if items else "None"
+
+
 def _info_list(info: dict[str, object], key: str) -> str:
 	items = info.get(key)
-	if isinstance(items, list) and items:
-		return "  ".join(str(item) for item in items)
+	if isinstance(items, list):
+		return _join_values(str(item) for item in items)
 	return "None"
 
 
@@ -2731,15 +2686,7 @@ def rpc_info_fields(info: dict[str, object]) -> list[tuple[str, str]]:
 
 
 def _srcinfo_values(srcinfo_content: str, key: str) -> list[str]:
-	values: list[str] = []
-	prefix = f"{key} ="
-	for raw_line in srcinfo_content.splitlines():
-		line = raw_line.strip()
-		if line.startswith(prefix):
-			value = line[len(prefix) :].strip()
-			if value:
-				values.append(value)
-	return values
+	return [v for k, v in _iter_srcinfo_kv(srcinfo_content) if k == key and v]
 
 
 def srcinfo_info_fields(package: str, srcinfo_content: str) -> list[tuple[str, str]]:
@@ -2750,17 +2697,9 @@ def srcinfo_info_fields(package: str, srcinfo_content: str) -> list[tuple[str, s
 		return values[0] if values else None
 
 	def join(values: Iterable[str]) -> str:
-		ordered = sorted(values)
-		return "  ".join(ordered) if ordered else "None"
+		return _join_values(values, sort=True)
 
-	version = first("pkgver")
-	if version:
-		pkgrel = first("pkgrel")
-		if pkgrel:
-			version = f"{version}-{pkgrel}"
-		epoch = first("epoch")
-		if epoch:
-			version = f"{epoch}:{version}"
+	version = _assemble_version(first("pkgver"), first("pkgrel"), first("epoch"))
 	return [
 		("Repository", "aur"),
 		("Name", package),
@@ -2833,8 +2772,7 @@ def inspect_package(
 			if plain:
 				print_info_fields(rpc_info_fields(info))
 				return
-			raw_description = info.get("Description")
-			description = raw_description if isinstance(raw_description, str) else None
+			description = _str_or_none(info.get("Description"))
 			_print_info_summary(
 				package,
 				description,
@@ -3294,8 +3232,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 		CACHE_TTL = 0
 	USE_COLOR = not getattr(args, "no_color", False) and sys.stdout.isatty()
 	# An [AUR] section's URLs override the RPC endpoint and git mirror (matched by
-	# content, so order/commenting a single line is fine).
-	for url in load_repo_registry().get("AUR", []):
+	# content, so order/commenting a single line is fine). Scheme is added if omitted,
+	# same as repo aliases -- the RPC URL feeds urllib and the mirror feeds git.
+	for raw in load_repo_registry().get("AUR", []):
+		url = _ensure_scheme(raw)
 		if "rpc" in url:
 			AUR_RPC_ENDPOINT = url
 		else:
@@ -3362,27 +3302,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 			)
 		elif args.command == "install":
 			preinstalled_official: set[str] | None = None
-			# Bare install whose default source is a {pkgbase}-templated alias (the
-			# Arch GitLab) can't build a third-party binary (cachyos/custom repo):
-			# install the prebuilt with pacman -S instead of 404'ing on the clone.
-			if not getattr(args, "repo", None) and not getattr(args, "repo_url", None):
-				default = _default_repo()
-				templated = bool(
-					default
-					and default != "AUR"
-					and any(
-						"{pkg}" in u or "{pkgbase}" in u
-						for u in resolve_repo_alias(default)
-					)
-				)
-				db_repo = _sync_db_repo(args.package) if templated else None
-				if db_repo and not _OFFICIAL_REPO_RE.match(db_repo):
-					print(
-						f"==> {args.package} is a prebuilt in '{db_repo}' "
-						"(no buildable source); installing with pacman"
-					)
-					install_official_packages([args.package], noconfirm=args.noconfirm)
-					return 0
+			# Bare install (no explicit --repo/--repo-url) may fall back to pacman -S
+			# when the default source can't build the package but pacman has a prebuilt.
+			explicit_source = bool(
+				getattr(args, "repo", None) or getattr(args, "repo_url", None)
+			)
 			repo_url, branch, subdir, repo_fallbacks = _resolve_repo_target(args)
 			if USE_AUR_RPC and not repo_url:
 				missing_official, unresolved = collect_missing_official_packages(
@@ -3411,6 +3335,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 				branch=branch,
 				subdir=subdir,
 				repo_fallbacks=repo_fallbacks,
+				pacman_fallback=not explicit_source,
 			)
 		elif args.command == "remove":
 			if args.cache:
@@ -3547,18 +3472,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 			shared_visited: set[str] = set()
 			shared_preinstalled_official: set[str] = set()
 			for pkg in selected:
-				# A sync-DB result from a third-party binary repo (cachyos, custom)
-				# has no buildable source -> install the prebuilt with pacman -S.
-				# Official-repo results still build from the alias's source below.
-				if pkg.from_db and not (
-					pkg.source and _OFFICIAL_REPO_RE.match(pkg.source)
-				):
-					try:
-						install_official_packages([pkg.name], noconfirm=args.noconfirm)
-					except AurGitError as exc:
-						exit_code = 1
-						print(f"error installing {pkg.name}: {exc}", file=sys.stderr)
-					continue
 				# Otherwise build each pick from the source it was found in.
 				p_url: str | None = None
 				p_branch: str | None = None
@@ -3592,6 +3505,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 						branch=p_branch,
 						subdir=p_subdir,
 						repo_fallbacks=p_fallbacks,
+						pacman_fallback=pkg.from_db,
 					)
 				except AurGitError as exc:
 					exit_code = 1

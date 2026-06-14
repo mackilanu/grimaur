@@ -1,22 +1,51 @@
-# grimoire repo aliases -- example.
-# Auto-generated on first run.
-# then use any of: install / fetch / inspect / search / update <pkg> 
-# [--repo <NAME>] forces a single source. Other-wise first is primary.
+# grimoire repo aliases -- example / reference.
 #
-# Manage with `grimoire repo --add/--rm/--ls`.
-# In a URL, {pkg} is replaced by the package name and {pkgbase} by its pkgbase
-# (looked up from the local pacman sync DBs, so split packages resolve too).
+# Each [NAME] is a source. The FIRST (top) uncommented section is the default when you
+# don't pass --repo; --repo <NAME> forces one. A bare `search` queries every section
+# and merges the results (like `pacman -Ss`). Works with install / fetch / inspect /
+# search / update. Can be managed with `grimoire repo --add/--rm/--ls`.
+# Lives at $XDG_CONFIG_HOME/grimoire/repos.conf (usually ~/.config/grimoire/repos.conf).
+#
+# URL placeholders, substituted per package:
+#   {pkg}      -> the package name
+#   {pkgbase}  -> its pkgbase (from the local pacman sync DBs, so split packages resolve)
+# Scheme is optional (github.com/u/r == https://github.com/u/r); tree / blob / raw
+# forge links are all accepted. Per-command --branch <ref> / --subdir <dir> override.
 
-# Default: Arch's official packages, one repo per pkgbase on the GitLab
-# bare `grimoire install <pkg>` builds the official package from source.
+# --- DEFAULT: Arch's official packages, one git repo per pkgbase on the Arch GitLab.
+# A bare `grimoire install <pkg>` builds the official package from source.
 [ARCH]
   https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git
 
-# A custom subdir-container repo: one dir per package under pkgs/.
-[VUR]
-  https://codeberg.org/myuser/myaur/tree/master/pkgs
+# 1) Single package -- PKGBUILD at the repo root (auto-descends into <pkg>/ if the root
+#    has none). For a one-off you can also just pass --repo-url <url> instead of an alias.
+#[SOLO]
+#  github.com/myuser/my-pkg
 
-# The AUR (RPC API + git mirror). Uncomment if desired.
+# 2) Subdir-container -- one dir per package under a subdir (descends to <subdir>/<pkg>).
+#    Real working example: https://github.com/h8d13/VUR
+#[VUR]
+#  github.com/h8d13/VUR/tree/master/pkgs
+
+# 3) Branch-per-package -- one package per branch; put {pkg} IN the branch of a tree URL.
+#    A bare repo URL does NOT do this (it just clones the default branch). Forge forms:
+#      github:   github.com/u/r/tree/{pkg}
+#      gitlab:   gitlab.com/u/r/-/tree/{pkg}        (GitLab needs the /-/ )
+#      codeberg: codeberg.org/u/r/src/branch/{pkg}
+#[XUR]
+#  gitlab.com/myuser/myaur/-/tree/{pkg}
+
+# 4) Repo-per-package -- {pkg} or {pkgbase} in the path (one repo per package on a forge).
+#[FORGE]
+#  git.example.org/pkgs/{pkg}.git
+
+# 5) Fallback mirrors -- list several URLs under one name; the first that clones wins.
+#[MIRRORED]
+#  github.com/myuser/myaur/tree/master/pkgs
+#  codeberg.org/myuser/myaur/tree/master/pkgs
+
+# --- The AUR (RPC API + git mirror). Opt-in: uncomment, and move it above [ARCH] to
+# make it your default backend.
 #[AUR]
 #  https://aur.archlinux.org/rpc/
 #  https://github.com/archlinux/aur.git
