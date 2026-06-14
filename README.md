@@ -46,26 +46,19 @@ Also accepts: `SRCINFO`
    - `grimaur remove --cache` drops the search result cache
 
 ### Build from other sources
-The default source is the AUR. Point grimaur at anything else that ships a `PKGBUILD`
+The default source is the AUR. But point at anything else that ships a `PKGBUILD`
 with `--repo-url`/`--repo` on `install`, `fetch`, `inspect`, `search`, and `update`:
-- `--repo-url <url>` builds from a git URL (scheme optional: `github.com/u/r` works). A
-  `tree`/`blob` link fills in the branch and subdir for you:
-  `--repo-url https://provider.ext/<user>/<repo>/tree/<ref>/<subdir>`
-- `--branch <ref>` / `--subdir <dir>` pick a ref, or a package nested in a monorepo
-- `grimaur repo --add <url> <name>` saves an alias; use it with `--repo <name>`. Add more
-  URLs under the same name for fallback mirrors. `--ls`/`--rm` to manage.
-- `{pkg}` (the package name) or `{pkgbase}` (its pkgbase, looked up from the pacman sync
-  DBs) in an alias URL select a repo-per-package forge. Arch's official packages live one
-  repo each on GitLab, keyed by pkgbase, so `{pkgbase}` builds split packages too
-  (`amd-ucode` -> `linux-firmware`):
+   - `--repo-url <url>` builds from a git URL (scheme optional: `github.com/u/r` works).
+   - `--branch <ref>` / `--subdir <dir>` pick a ref, or a package nested in a monorepo
+   - `repo --add <url> <name>` saves an alias; use it with `--repo <name>`.
+   - Add more URLs under the same name for fallback mirrors. `--ls`/`--rm` to manage. Saved to `~/.config/grimaur/repos.conf`
+   - `{pkg}` (the package name) or `{pkgbase}` (its pkgbase, looked up from the pacman sync DBs)
+
    ```bash
    grimaur repo --add 'https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git' arch
    grimaur install <pkg> --repo arch   # builds an official package from source
    ```
-
-The package name selects the source: a branch on the AUR mirror, or a repo/subdir via
-`{pkg}`/`{pkgbase}` or monorepo layout. `search --repo <name>` lists a repo's packages
-(one dir per package, or branches); templated aliases have no index so can't be searched.
+`search --repo <name>` lists a repo's packages, a package-per-dir subdir, or its branches and falls-back to local DB.
 
 ### Stay Updated
 - `grimaur update` rebuilds every installed “foreign” package that has a newer release.

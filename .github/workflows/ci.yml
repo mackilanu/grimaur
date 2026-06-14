@@ -108,13 +108,12 @@ jobs:
           # split package resolves name -> pkgbase via the sync DB (amd-ucode -> linux-firmware)
           ./grimaur inspect amd-ucode --repo arch --target PKGBUILD | grep -q '^pkgbase=linux-firmware'
 
-      - name: Search a custom repo (VUR enumeration + templated rejection)
+      - name: Search a custom repo (VUR enumeration + sync-DB-backed template)
         run: |
           ./grimaur search '' --repo VUR --no-interactive --plain | grep -q 'vscodium-rel'
           ./grimaur search codium --repo VUR --no-interactive --plain | grep -q 'vscodium-rel'
-          # a {pkg}-templated alias has no index -> must error, not hang/fake
-          ! ./grimaur search bash --repo arch --no-interactive 2>/tmp/serr.log
-          grep -q 'templated' /tmp/serr.log
+          # a {pkgbase}-templated alias has no list of its own; it enumerates the sync DBs
+          ./grimaur search bash --repo arch --no-interactive --plain | grep -q 'arch/bash'
 
       - name: Install + update from a custom repo (VUR)
         run: |

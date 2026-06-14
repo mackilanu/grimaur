@@ -217,6 +217,7 @@ class SearchRepoTests(unittest.TestCase):
 			needle="",
 			limit=None,
 			source="VUR",
+			dest_root=self.root / "dest",
 		)
 		by_name = {r.name: r for r in results}
 		self.assertEqual(set(by_name), {"foo", "bar"})
@@ -233,8 +234,23 @@ class SearchRepoTests(unittest.TestCase):
 			needle="foo",
 			limit=None,
 			source="VUR",
+			dest_root=self.root / "dest",
 		)
 		self.assertEqual([r.name for r in results], ["foo"])
+
+	def test_enum_clone_lands_under_dest_root_not_tmp(self) -> None:
+		dest = self.root / "dest"
+		grimaur.search_packages_repo(
+			f"file://{self.src}",
+			"master",
+			"pkgs",
+			regex=None,
+			needle="",
+			limit=None,
+			source="VUR",
+			dest_root=dest,
+		)
+		self.assertTrue((dest / ".searchrepo").is_dir())
 
 	def test_source_label_in_plain_and_pretty(self) -> None:
 		result = grimaur.SearchResult(
@@ -248,10 +264,14 @@ class SearchRepoTests(unittest.TestCase):
 		self.assertTrue(
 			grimaur.format_search_result_plain(result)[0].startswith("VUR/foo")
 		)
-		self.assertIn("repo: VUR", grimaur.format_search_result(1, result)[0])
+		self.assertIn("[https VUR]", grimaur.format_search_result(1, result)[0])
 
-	def test_templated_alias_rejected(self) -> None:
-		with self.assertRaises(grimaur.AurGitError):
+	def test_templated_alias_without_index_rejected(self) -> None:
+		# No sync DB to fall back on -> templated alias has nothing to enumerate.
+		with (
+			mock.patch.object(grimaur, "_sync_db_packages", return_value=()),
+			self.assertRaises(grimaur.AurGitError),
+		):
 			grimaur.search_packages_repo(
 				"https://x/{pkg}.git",
 				None,
@@ -260,7 +280,28 @@ class SearchRepoTests(unittest.TestCase):
 				needle="",
 				limit=None,
 				source="x",
+				dest_root=self.root / "dest",
 			)
+
+	def test_templated_alias_enumerates_sync_db(self) -> None:
+		# With a sync DB, a templated alias searches pacman's index instead.
+		fake = (
+			("amd-ucode", "1-1", "AMD microcode"),
+			("bash", "5-1", "shell"),
+		)
+		with mock.patch.object(grimaur, "_sync_db_packages", return_value=fake):
+			results = grimaur.search_packages_repo(
+				"https://gitlab/{pkgbase}.git",
+				None,
+				None,
+				regex=None,
+				needle="ucode",
+				limit=None,
+				source="arch",
+				dest_root=self.root / "dest",
+			)
+		self.assertEqual([r.name for r in results], ["amd-ucode"])
+		self.assertEqual(results[0].source, "arch")
 
 
 if __name__ == "__main__":

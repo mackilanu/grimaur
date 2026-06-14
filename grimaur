@@ -120,6 +120,7 @@ _GLOBAL_FLAG_OPTIONS = {
 	"--use-ssh",
 	"--shallow",
 	"--version",
+	"-v",
 }
 
 # Map of hosts to the SSH user used by their git endpoint.
@@ -201,6 +202,41 @@ def _resolve_pkgbase(package: str) -> str:
 		except OSError, tarfile.TarError:
 			continue
 	return package
+
+
+@cache
+def _sync_db_packages() -> tuple[tuple[str, str | None, str | None], ...]:
+	# Every package in the pacman sync DBs as (name, version, description). Lets
+	# `search --repo <templated>` enumerate via pacman's index when the alias itself
+	# has none (the Arch GitLab repo-per-pkgbase). gzip + zstd DBs; first repo wins.
+	import tarfile
+
+	sync = _pacman_db_path() / "sync"
+	try:
+		dbs = sorted(sync.glob("*.db"))
+	except OSError:
+		return ()
+	seen: dict[str, tuple[str | None, str | None]] = {}
+	for db in dbs:
+		try:
+			with tarfile.open(db, "r:*") as tar:
+				for member in tar:
+					if not member.name.endswith("/desc"):
+						continue
+					extracted = tar.extractfile(member)
+					if extracted is None:
+						continue
+					fields = dict(
+						_DESC_FIELD_RE.findall(
+							extracted.read().decode("utf-8", "replace")
+						)
+					)
+					name = fields.get("NAME")
+					if name and name not in seen:
+						seen[name] = (fields.get("VERSION"), fields.get("DESC"))
+		except OSError, tarfile.TarError:
+			continue
+	return tuple((n, v, d) for n, (v, d) in seen.items())
 
 
 def _read_pacman_auth() -> str | None:
@@ -2282,24 +2318,32 @@ def search_packages_repo(
 	needle: str | None,
 	limit: int | None,
 	source: str,
+	dest_root: Path,
 ) -> list[SearchResult]:
-	if "{pkg}" in repo_url or "{pkgbase}" in repo_url:
-		raise AurGitError(
-			f"alias is templated ({repo_url}); it has no package index to search. "
-			"Search needs a repo that lists its packages (a subdir or branches)."
-		)
 	if limit is None:
 		limit = 50
 	installed = installed_package_set()
-	results: list[SearchResult] = []
-	import tempfile
-
-	with tempfile.TemporaryDirectory() as tmp:
-		entries = _repo_package_names(repo_url, branch, subdir, Path(tmp) / "repo")
-		for name, srcinfo_dir in entries:
-			score = compute_match_score(name, regex=regex, needle=needle)
-			if score is None:
-				continue
+	# (name, version, description) candidates from whichever index applies.
+	candidates: list[tuple[str, str | None, str | None]] = []
+	if "{pkg}" in repo_url or "{pkgbase}" in repo_url:
+		# A template has no per-alias listing; fall back to the pacman sync DBs (the
+		# Arch GitLab case). Genuinely indexless aliases still error.
+		candidates = list(_sync_db_packages())
+		if not candidates:
+			raise AurGitError(
+				f"alias is templated ({repo_url}) and no pacman sync DB is available "
+				"to enumerate it. Search needs an index (a subdir, branches, or sync DB)."
+			)
+	else:
+		# Enumeration needs the tree, so clone under dest-root (same convention as
+		# package clones) rather than a system /tmp; refreshed each search.
+		clone_dir = dest_root / ".searchrepo"
+		dest_root.mkdir(parents=True, exist_ok=True)
+		if clone_dir.exists():
+			shutil.rmtree(clone_dir)
+		for name, srcinfo_dir in _repo_package_names(
+			repo_url, branch, subdir, clone_dir
+		):
 			version: str | None = None
 			description: str | None = None
 			# Read .SRCINFO directly (no makepkg) when the clone gave us the dir.
@@ -2309,16 +2353,23 @@ def search_packages_repo(
 					version, description = _parse_srcinfo_metadata(
 						srcinfo_path.read_text()
 					)
-			results.append(
-				SearchResult(
-					name=name,
-					version=version,
-					description=description,
-					installed=name in installed,
-					score=score,
-					source=source,
-				)
+			candidates.append((name, version, description))
+
+	results: list[SearchResult] = []
+	for name, version, description in candidates:
+		score = compute_match_score(name, regex=regex, needle=needle)
+		if score is None:
+			continue
+		results.append(
+			SearchResult(
+				name=name,
+				version=version,
+				description=description,
+				installed=name in installed,
+				score=score,
+				source=source,
 			)
+		)
 	results.sort(key=lambda result: (result.score, result.name))
 	if limit >= 0:
 		results = results[:limit]
@@ -2395,7 +2446,7 @@ def format_search_result(index: int, result: SearchResult) -> list[str]:
 		main_parts.append(style("[installed]", GREEN))
 	protocol = "ssh" if USE_SSH else "https"
 	if result.source is not None:
-		meta_bits: list[str] = [f"{protocol} repo: {result.source}"]
+		meta_bits: list[str] = [f"{protocol} {result.source}"]
 	# Note using votes we can know its a rpc result
 	elif result.votes is not None:
 		meta_bits = [f"{protocol} aur rpc", f"{result.votes} votes"]
@@ -2778,9 +2829,10 @@ def build_parser() -> argparse.ArgumentParser:
 		description="Work with AUR packages via the git mirror or AUR RPC"
 	)
 	parser.add_argument(
+		"-v",
 		"--version",
 		action="version",
-		version=f"grimaur {__version__}",
+		version=f"grimaur {__version__} - MIT 2026.",
 		help="Show version and exit",
 	)
 	default_dest = str(Path(os.environ.get("XDG_CACHE_HOME", "~/.cache")) / "grimaur")
@@ -3305,6 +3357,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 					needle=needle,
 					limit=args.limit,
 					source=getattr(args, "repo", None) or search_repo_url,
+					dest_root=dest_root,
 				)
 			else:
 				results = search_packages(
