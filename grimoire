@@ -144,18 +144,19 @@ SSH_REWRITE_HOSTS = {
 # Written on first use when no repos.conf exists. Default source is [ARCH] (build
 # official packages from source); the AUR is opt-in (commented out).
 _DEFAULT_REPOS_CONF = """\
-# Example grimoire config. Manage with `grimoire repo`. Top takes precedence. Spaces do not matter.
-# Template support: {pkg} = package name, {pkgbase} = its pkgbase (Ie: amd-ucode -> linux-firmware)
+# Example grimoire config. Manage with `grimoire repo`.
+# Top takes precedence. Spaces do not matter.
+# Template support: {pkg} = package name, {pkgbase} = its pkgbase
+# (Ie: amd-ucode -> linux-firmware)
 
-# Insert a custom repo here. An example can be found in the repo.
+# Insert a custom repo here. Examples can be found in the repo.
 
-# Default: Arch's official packages (one repo per pkgbase), so a
-# bare `grimoire install <pkg>` builds the official package from source.
+# Default: Arch's official packages, searches local DB first... But:
+# `grimoire fetch <pkg>` lets you build official package from source.
 [ARCH]
   https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git
 
-# The AUR (RPC API + git mirror). Opt-in: uncomment and move above [ARCH] if desired
-
+# The AUR (RPC API + git mirror). Opt-in: uncomment and move above [ARCH]
 #[AUR]
 #  https://aur.archlinux.org/rpc/
 #  https://github.com/archlinux/aur.git
