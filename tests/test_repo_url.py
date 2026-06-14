@@ -259,6 +259,32 @@ class ResolveRepoAliasTargetTests(unittest.TestCase):
 		with self.assertRaises(grimaur.AurGitError):
 			grimaur._resolve_repo_target(args)
 
+	def test_pkg_template_substituted_by_package_name(self) -> None:
+		grimaur.add_repo_alias(
+			"arch",
+			"https://gitlab.archlinux.org/archlinux/packaging/packages/{pkg}.git",
+		)
+		args = argparse.Namespace(
+			repo="arch", repo_url=None, branch=None, subdir=None, package="bash"
+		)
+		primary_url, _, _, fallbacks = grimaur._resolve_repo_target(args)
+		self.assertEqual(
+			primary_url,
+			"https://gitlab.archlinux.org/archlinux/packaging/packages/bash.git",
+		)
+		self.assertEqual(fallbacks, [])
+
+	def test_pkg_template_left_intact_without_package(self) -> None:
+		# No package on the namespace (e.g. nothing to substitute) -> URL untouched.
+		args = argparse.Namespace(
+			repo=None,
+			repo_url="https://example.com/{pkg}.git",
+			branch=None,
+			subdir=None,
+		)
+		primary_url, _, _, _ = grimaur._resolve_repo_target(args)
+		self.assertEqual(primary_url, "https://example.com/{pkg}.git")
+
 
 if __name__ == "__main__":
 	unittest.main()

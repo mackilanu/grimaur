@@ -2754,6 +2754,7 @@ def _resolve_repo_target(
 ]:
 	branch = getattr(args, "branch", None)
 	subdir = getattr(args, "subdir", None)
+	package = getattr(args, "package", None)
 	# --repo NAME expands to an ordered mirror list; --repo-url is a single URL.
 	# (argparse keeps them mutually exclusive.) First URL is primary, rest fallbacks.
 	alias = getattr(args, "repo", None)
@@ -2765,6 +2766,11 @@ def _resolve_repo_target(
 		return None, branch, subdir, []
 
 	def _resolve(raw: str) -> tuple[str, str | None, str | None]:
+		# `{pkg}` lets one alias serve a whole repo-per-package forge (e.g. the
+		# Arch GitLab): the package name selects the repo, like it selects a
+		# branch on the AUR mirror.
+		if package and "{pkg}" in raw:
+			raw = raw.replace("{pkg}", package)
 		clone_url, parsed_branch, parsed_subdir = parse_repo_url(raw)
 		# Explicit flags win over whatever the URL encoded.
 		return clone_url, branch or parsed_branch, subdir or parsed_subdir
