@@ -3,7 +3,7 @@
 pkgname=use-ssh-nested-test
 pkgver=0.0.1
 pkgrel=1
-pkgdesc="Fixture for grimaur --use-ssh propagation to PKGBUILD source git+https URLs"
+pkgdesc="Fixture for grimoire --use-ssh propagation to PKGBUILD source git+https URLs"
 arch=('any')
 url="https://github.com/h8d13/grimaur3"
 license=('MIT')

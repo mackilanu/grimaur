@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-r"""grimaur: Fetch, inspect, search, list, update, and install, remove Arch Linux packages.
+r"""grimoire: Fetch, inspect, search, list, update, and install, remove Arch Linux packages.
 
 It natively speaks all things `makepkg`. And works outside of AUR.
 I.e: Private software colletions, Public organizations repositories, ...
 What is defined as VUR (Virtual User Repo).
 Or official Arch Linux packages from their Gitlab.
 
-grimaur can recursively resolve and install dependencies by building packages locally with
+grimoire can recursively resolve and install dependencies by building packages locally with
 makepkg. Official repository dependencies are installed with pacman when they are missing.
 
 In a single truth python file.
@@ -18,7 +18,7 @@ In a single truth python file.
  //__.....----~~~~._\ | /_.~~~~----.....__\\
 ====================\\|//====================
 
-                grimaur 0.1.3
+                grimoire 0.1.3
 
 ASCII: Donovan Baker
 ## /* SPDX-FileCopyrightText: 2026
@@ -373,18 +373,18 @@ def parse_repo_url(url: str) -> tuple[str, str | None, str | None]:
 
 
 def _repo_registry_path() -> Path:
-	return _xdg_config_home() / "grimaur" / "repos.conf"
+	return _xdg_config_home() / "grimoire" / "repos.conf"
 
 
 # Written on first use when no repos.conf exists. Default source is [ARCH] (build
 # official packages from source); the AUR is opt-in (commented out).
 _DEFAULT_REPOS_CONF = """\
-# grimaur repo aliases. The first (top) section is the default source when you don't
-# pass --repo; --repo <NAME> overrides per command. Manage with `grimaur repo`.
+# grimoire repo aliases. The first (top) section is the default source when you don't
+# pass --repo; --repo <NAME> overrides per command. Manage with `grimoire repo`.
 # In a URL, {pkg} = package name, {pkgbase} = its pkgbase (from the pacman sync DBs).
 
 # Default: Arch's official packages (one repo per pkgbase on the Arch GitLab), so a
-# bare `grimaur install <pkg>` builds the official package from source.
+# bare `grimoire install <pkg>` builds the official package from source.
 [ARCH]
   https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git
 
@@ -1963,7 +1963,7 @@ def update_packages(
 			)
 			print(
 				style(
-					f"Run 'grimaur update --global --install' or '{_get_elev()} pacman -Su' to install them.",
+					f"Run 'grimoire update --global --install' or '{_get_elev()} pacman -Su' to install them.",
 					YELLOW,
 				)
 			)
@@ -2158,7 +2158,7 @@ def search_packages(
 	limit: int | None,
 ) -> list[SearchResult]:
 	# Regex requires git mirror - AUR RPC has their own regex
-	# passing a pattern returns nothing, lets use grimaur's main functionality instead
+	# passing a pattern returns nothing, lets use grimoire's main functionality instead
 	# if pattern is received use git mirror automatically and remove regex functions from RPC related
 	if USE_AUR_RPC and regex is None:  # Here condion pass to git instead
 		results = search_packages_rpc(
@@ -2911,15 +2911,15 @@ def build_parser() -> argparse.ArgumentParser:
 		"-v",
 		"--version",
 		action="version",
-		version=f"grimaur {__version__} - MIT 2026.",
+		version=f"grimoire {__version__} - MIT 2026.",
 		help="Show version and exit",
 	)
-	default_dest = str(Path(os.environ.get("XDG_CACHE_HOME", "~/.cache")) / "grimaur")
+	default_dest = str(Path(os.environ.get("XDG_CACHE_HOME", "~/.cache")) / "grimoire")
 	parser.add_argument(
 		"--dest-root",
 		default=default_dest,
 		help="Directory to store cloned packages "
-		"(default: $XDG_CACHE_HOME/grimaur or ~/.cache/grimaur)",
+		"(default: $XDG_CACHE_HOME/grimoire or ~/.cache/grimoire)",
 	)
 	parser.add_argument(
 		"--refresh", action="store_true", help="Refresh existing clones before use"
@@ -2966,7 +2966,7 @@ def build_parser() -> argparse.ArgumentParser:
 	fetch_src.add_argument(
 		"--repo",
 		metavar="NAME",
-		help="Use a registered repo alias as the mirror list (see 'grimaur repo --ls')",
+		help="Use a registered repo alias as the mirror list (see 'grimoire repo --ls')",
 	)
 	fetch_parser.add_argument(
 		"--subdir",
@@ -2986,7 +2986,7 @@ def build_parser() -> argparse.ArgumentParser:
 	install_src.add_argument(
 		"--repo",
 		metavar="NAME",
-		help="Use a registered repo alias as the mirror list (see 'grimaur repo --ls')",
+		help="Use a registered repo alias as the mirror list (see 'grimoire repo --ls')",
 	)
 	install_parser.add_argument(
 		"--subdir",
@@ -3034,7 +3034,7 @@ def build_parser() -> argparse.ArgumentParser:
 	update_src.add_argument(
 		"--repo",
 		metavar="NAME",
-		help="Check/rebuild updates from a registered repo alias (see 'grimaur repo --ls')",
+		help="Check/rebuild updates from a registered repo alias (see 'grimoire repo --ls')",
 	)
 	update_parser.add_argument(
 		"--subdir",
@@ -3099,7 +3099,7 @@ def build_parser() -> argparse.ArgumentParser:
 	search_src.add_argument(
 		"--repo",
 		metavar="NAME",
-		help="Search a registered repo alias instead of the AUR (see 'grimaur repo --ls')",
+		help="Search a registered repo alias instead of the AUR (see 'grimoire repo --ls')",
 	)
 	search_parser.add_argument(
 		"--subdir",
@@ -3127,7 +3127,7 @@ def build_parser() -> argparse.ArgumentParser:
 	inspect_src.add_argument(
 		"--repo",
 		metavar="NAME",
-		help="Use a registered repo alias as the mirror list (see 'grimaur repo --ls')",
+		help="Use a registered repo alias as the mirror list (see 'grimoire repo --ls')",
 	)
 	inspect_parser.add_argument(
 		"--subdir",
@@ -3248,7 +3248,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 		"repo",
 	}
 	# Hoist global flags so they can appear after the subcommand too
-	# (e.g. `grimaur update --git-mirror` instead of only `grimaur --git-mirror update`).
+	# (e.g. `grimoire update --git-mirror` instead of only `grimoire --git-mirror update`).
 	if argv_list:
 		implicit_search = (
 			not argv_list[0].startswith("-") and argv_list[0] not in commands
@@ -3315,7 +3315,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 	if os.geteuid() == 0:
 		print(
 			style(
-				"error: do not run grimaur as root. see man makepkg "
+				"error: do not run grimoire as root. see man makepkg "
 				"pacman elevation is handled auto via PACMAN_AUTH in makepkg.conf "
 				"re-run as a regular user",
 				RED,

@@ -28,7 +28,7 @@ jobs:
       - name: Create release archive
         run: |
           tar -czf ${{ env.VER }}.tar.gz \
-            grimaur PKGBUILD LICENSE README.md
+            grimoire PKGBUILD LICENSE README.md
 
       - name: Delete existing latest tag
         run: |

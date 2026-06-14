@@ -1,4 +1,4 @@
-#compdef grimaur 
+#compdef grimoire 
 # file usr/share/zsh/site-functions/_grimaur
 
 _grimaur() {
@@ -35,7 +35,7 @@ _grimaur() {
                 'inspect:Show PKGBUILD or dependency information'
                 'list:List installed foreign (AUR) packages'
             )
-            _describe -t commands 'grimaur command' commands
+            _describe -t commands 'grimoire command' commands
             ;;
         args)
             case $line[1] in
@@ -108,16 +108,16 @@ _grimaur_foreign_packages() {
     _describe -t packages 'installed package' packages
 }
 
-# Complete AUR names from the cache grimaur writes alongside packages.json;
+# Complete AUR names from the cache grimoire writes alongside packages.json;
 # prefix-grep instead of _describe: the full list is ~115k entries.
 _grimaur_aur_packages() {
-    local cache="${XDG_CACHE_HOME:-$HOME/.cache}/grimaur/completion.cache"
+    local cache="${XDG_CACHE_HOME:-$HOME/.cache}/grimoire/completion.cache"
     if [[ -r "$cache" ]]; then
         local -a packages
         packages=(${(f)"$(grep -- "^${PREFIX}" "$cache" 2>/dev/null | head -200)"})
         compadd -a packages
     else
-        (grimaur list --aur >/dev/null 2>&1 &)
+        (grimoire list --aur >/dev/null 2>&1 &)
     fi
 }
 

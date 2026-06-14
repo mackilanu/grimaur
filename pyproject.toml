@@ -1,12 +1,12 @@
 [project]
-name = "grimaur"
+name = "grimoire"
 version = "0.1.2"
 requires-python = ">=3.14"
 
 [tool.ruff]
 target-version = "py314"
 line-length = 88
-extend-include = ["grimaur"]
+extend-include = ["grimoire"]
 
 [tool.ruff.lint]
 select = ["E", "F", "B", "I", "UP", "W", "TC", "PERF", "S", "PLW", "SIM", "PTH", "RUF", "FURB", "A", "ISC"]

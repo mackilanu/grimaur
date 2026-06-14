@@ -1,14 +1,14 @@
-# grimaur repo aliases -- example.
+# grimoire repo aliases -- example.
 # Auto-generated on first run.
 # then use any of: install / fetch / inspect / search / update <pkg> 
 # [--repo <NAME>] forces a single source. Other-wise first is primary.
 #
-# Manage with `grimaur repo --add/--rm/--ls`.
+# Manage with `grimoire repo --add/--rm/--ls`.
 # In a URL, {pkg} is replaced by the package name and {pkgbase} by its pkgbase
 # (looked up from the local pacman sync DBs, so split packages resolve too).
 
 # Default: Arch's official packages, one repo per pkgbase on the GitLab
-# bare `grimaur install <pkg>` builds the official package from source.
+# bare `grimoire install <pkg>` builds the official package from source.
 [ARCH]
   https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git
 

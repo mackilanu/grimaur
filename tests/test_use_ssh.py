@@ -6,7 +6,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
-from grimaurshim import grimaur
+from grimaurshim import grimoire
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "use-ssh-nested" / "PKGBUILD"
 
@@ -37,14 +37,14 @@ class SSHRewriteTests(unittest.TestCase):
 	def test_fixture_covers_every_rewrite_host(self) -> None:
 		urls = _source_urls(FIXTURE)
 		hosts = {url.split("/")[2] for url in urls}
-		for host in grimaur.SSH_REWRITE_HOSTS:
+		for host in grimoire.SSH_REWRITE_HOSTS:
 			self.assertIn(host, hosts, f"fixture missing source for {host}")
 
 	def test_per_url_python_rewrite(self) -> None:
-		# grimaur's own outer-clone rewrite what _maybe_ssh_rewrite produces.
+		# grimoire's own outer-clone rewrite what _maybe_ssh_rewrite produces.
 		for url in _source_urls(FIXTURE):
 			with self.subTest(url=url):
-				self.assertEqual(grimaur._maybe_ssh_rewrite(url), EXPECTED[url])
+				self.assertEqual(grimoire._maybe_ssh_rewrite(url), EXPECTED[url])
 
 	def _isolated_env(self) -> dict[str, str]:
 		# Strip user/system git config so tests aren't poisoned by personal
@@ -53,7 +53,7 @@ class SSHRewriteTests(unittest.TestCase):
 			**os.environ,
 			"GIT_CONFIG_GLOBAL": "/dev/null",
 			"GIT_CONFIG_SYSTEM": "/dev/null",
-			**grimaur._ssh_rewrite_git_env(),
+			**grimoire._ssh_rewrite_git_env(),
 		}
 
 	def test_env_vars_register_insteadof_in_git(self) -> None:
@@ -67,7 +67,7 @@ class SSHRewriteTests(unittest.TestCase):
 			check=True,
 		)
 		out = result.stdout.lower()
-		for host, user in grimaur.SSH_REWRITE_HOSTS.items():
+		for host, user in grimoire.SSH_REWRITE_HOSTS.items():
 			expected = f"url.ssh://{user}@{host}/.insteadof=https://{host}/"
 			self.assertIn(expected, out, f"missing insteadOf rule for {host}")
 

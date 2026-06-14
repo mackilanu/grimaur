@@ -19,11 +19,11 @@ jobs:
       - name: Install lint/type tools
         run: pip install ruff mypy
       - name: Ruff lint
-        run: ruff check grimaur tests/
+        run: ruff check grimoire tests/
       - name: Ruff format
-        run: ruff format --check grimaur tests/
+        run: ruff format --check grimoire tests/
       - name: Type check
-        run: mypy grimaur tests/
+        run: mypy grimoire tests/
       # discover via unittest so CI needs no pytest dependency
       - name: Unit tests
         run: python -m unittest discover -s tests -t tests -v
@@ -60,69 +60,69 @@ jobs:
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
           chown -R builder:builder .
 # setup done; all steps below run as builder via defaults.run.shell
-      - run: ./grimaur --help
+      - run: ./grimoire --help
 
-      # --- Custom repo (VUR): build grimaur-git from a custom source, before the AUR ---
-      - name: Build grimaur-git from a custom repo (VUR)
+      # --- Custom repo (VUR): build grimoire-git from a custom source, before the AUR ---
+      - name: Build grimoire-git from a custom repo (VUR)
         run: |
           # scheme-less, subdir-per-pkg container alias; `repo` never auto-seeds a conf
-          ./grimaur repo --add 'github.com/h8d13/VUR/tree/master/pkgs' VUR
-          ./grimaur repo --ls
-          ./grimaur install grimaur-git --repo VUR --noconfirm
+          ./grimoire repo --add 'github.com/h8d13/VUR/tree/master/pkgs' VUR
+          ./grimoire repo --ls
+          ./grimoire install grimoire-git --repo VUR --noconfirm
           # verify it was built from the custom source (origin is VUR, not the AUR)
-          git -C ~/.cache/grimaur/grimaur-git remote get-url origin | grep -q 'h8d13/VUR'
-          pacman -Q grimaur-git
-          echo "grimaur-git built from VUR: PASS"
+          git -C ~/.cache/grimoire/grimoire-git remote get-url origin | grep -q 'h8d13/VUR'
+          pacman -Q grimoire-git
+          echo "grimoire-git built from VUR: PASS"
 
       - name: Custom-repo reads (default source, search, {pkgbase})
         run: |
-          ./grimaur repo --add 'https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git' ARCH
+          ./grimoire repo --add 'https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git' ARCH
           # bare command (no --repo) uses the top section = VUR -> descends pkgs/<pkg>
-          ./grimaur fetch grimaur-git | grep -q 'pkgs/grimaur-git'
-          ./grimaur search '' --repo VUR --no-interactive --plain | grep -q 'vscodium-rel'
-          ./grimaur search bash --repo ARCH --no-interactive --plain | grep -qE '(core|extra)/bash'
+          ./grimoire fetch grimoire-git | grep -q 'pkgs/grimoire-git'
+          ./grimoire search '' --repo VUR --no-interactive --plain | grep -q 'vscodium-rel'
+          ./grimoire search bash --repo ARCH --no-interactive --plain | grep -qE '(core|extra)/bash'
           # bare search aggregates ALL conf sections -> VUR shows without --repo
-          ./grimaur search vscodium-rel --no-interactive --plain | grep -q 'VUR/vscodium-rel'
+          ./grimoire search vscodium-rel --no-interactive --plain | grep -q 'VUR/vscodium-rel'
           # split package resolves name -> pkgbase via the sync DB
-          ./grimaur inspect amd-ucode --repo ARCH --target PKGBUILD | grep -q '^pkgbase=linux-firmware'
-          ./grimaur update grimaur-git --repo VUR --noconfirm 2>&1 | tee /tmp/upd.log
+          ./grimoire inspect amd-ucode --repo ARCH --target PKGBUILD | grep -q '^pkgbase=linux-firmware'
+          ./grimoire update grimoire-git --repo VUR --noconfirm 2>&1 | tee /tmp/upd.log
           grep -q 'up to date' /tmp/upd.log
 
       - name: Test --use-ssh rewrites URLs (clone fails, but rewrite worked)
         env:
           DEBUG: "1"
         run: |
-          ./grimaur fetch archinstoo --use-ssh --shallow --repo-url https://github.com/h8d13/archinstoo 2>&1 | tee /tmp/ssh.log || true
+          ./grimoire fetch archinstoo --use-ssh --shallow --repo-url https://github.com/h8d13/archinstoo 2>&1 | tee /tmp/ssh.log || true
           grep -qF 'ssh://git@github.com/h8d13/archinstoo' /tmp/ssh.log; echo "URL re-written PASS." \
             || { echo "FAIL: --use-ssh did not rewrite URL to ssh://"; exit 1; }
 
       # --- AUR backend: opt in ([AUR] as the only/first section) and exercise it ---
       - name: Enable the AUR and run AUR-backed tests (yay)
         run: |
-          rm -f ~/.config/grimaur/repos.conf
-          ./grimaur repo --add 'https://aur.archlinux.org/rpc/' AUR
-          ./grimaur repo --add 'https://github.com/archlinux/aur.git' AUR
-          ./grimaur fetch $PKG
-          ./grimaur --refresh fetch $PKG
-          ./grimaur fetch --force $PKG
-          rm -rf ~/.cache/grimaur/$PKG
-          ./grimaur --shallow fetch $PKG
-          count=$(git -C ~/.cache/grimaur/$PKG rev-list --count HEAD)
+          rm -f ~/.config/grimoire/repos.conf
+          ./grimoire repo --add 'https://aur.archlinux.org/rpc/' AUR
+          ./grimoire repo --add 'https://github.com/archlinux/aur.git' AUR
+          ./grimoire fetch $PKG
+          ./grimoire --refresh fetch $PKG
+          ./grimoire fetch --force $PKG
+          rm -rf ~/.cache/grimoire/$PKG
+          ./grimoire --shallow fetch $PKG
+          count=$(git -C ~/.cache/grimoire/$PKG rev-list --count HEAD)
           [ "$count" = "1" ] && echo "shallow depth=1 PASS" || { echo "expected 1, got $count"; exit 1; }
-          ./grimaur --git-mirror fetch --force $PKG
-          ./grimaur inspect $PKG --target PKGBUILD
-          time ./grimaur search $PATTERN --no-interactive
-          ./grimaur install $PKG --noconfirm       # bare -> default [AUR]
+          ./grimoire --git-mirror fetch --force $PKG
+          ./grimoire inspect $PKG --target PKGBUILD
+          time ./grimoire search $PATTERN --no-interactive
+          ./grimoire install $PKG --noconfirm       # bare -> default [AUR]
           pacman -Q $PKG
           echo "$PKG built from AUR: PASS"
 
       # --- First run with no conf auto-seeds an [ARCH] default (AUR opt-in) ---
       - name: First run seeds an [ARCH] default conf
         run: |
-          rm -f ~/.config/grimaur/repos.conf
-          ./grimaur inspect bash --target PKGBUILD | grep -q '^pkgname=bash'   # bare -> auto [ARCH]
-          test -f ~/.config/grimaur/repos.conf
-          grep -q '^\[ARCH\]' ~/.config/grimaur/repos.conf
-          grep -q '^#\[AUR\]' ~/.config/grimaur/repos.conf
+          rm -f ~/.config/grimoire/repos.conf
+          ./grimoire inspect bash --target PKGBUILD | grep -q '^pkgname=bash'   # bare -> auto [ARCH]
+          test -f ~/.config/grimoire/repos.conf
+          grep -q '^\[ARCH\]' ~/.config/grimoire/repos.conf
+          grep -q '^#\[AUR\]' ~/.config/grimoire/repos.conf
 
-      - run: ./grimaur list
+      - run: ./grimoire list

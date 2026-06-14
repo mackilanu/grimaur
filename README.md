@@ -1,9 +1,9 @@
-# grimaur
+# grimoire
 
-<img align="left" src="./base/assets/grimoire_d.svg#gh-light-mode-only" width="80" alt="grimaur logo">
-<img align="left" src="./base/assets/grimoire_l.svg#gh-dark-mode-only" width="80" alt="grimaur logo">
+<img align="left" src="./base/assets/grimoire_d.svg#gh-light-mode-only" width="80" alt="grimoire logo">
+<img align="left" src="./base/assets/grimoire_l.svg#gh-dark-mode-only" width="80" alt="grimoire logo">
 
-`grimaur` is a lightweight package builder for Arch. It searches, builds, and updates
+`grimoire` is a lightweight package builder for Arch. It searches, builds, and updates
 AUR packages (RPC API with **automatic fallback to the official git mirror**), and
 because it just drives `makepkg`, it can build any `PKGBUILD` from any git source you
 point it at.
@@ -15,35 +15,35 @@ point it at.
 
 ### From Github/Python directly
    ```bash
-   git clone https://github.com/mackilanu/grimaur
-   cd grimaur
-   ./grimaur <command> # try --help
+   git clone https://github.com/mackilanu/grimoire
+   cd grimoire
+   ./grimoire <command> # try --help
    # or install globally makepkg -si
    ```
 
 >[!TIP]
-> You can use `grimaur fetch <package>` to inspect `PKGBUILD` and source code before
+> You can use `grimoire fetch <package>` to inspect `PKGBUILD` and source code before
 > manually installing using `makepkg` or similar.
 
-Even see it directly: `python grimaur inspect brave-bin --target PKGBUILD`
+Even see it directly: `python grimoire inspect brave-bin --target PKGBUILD`
 Also accepts: `SRCINFO`
 
 ## Usage
 ### Search Packages
-- `grimaur <term>` (or `grimaur search <term>`) lists matching packages.
+- `grimoire <term>` (or `grimoire search <term>`) lists matching packages.
    - Regex `"pattern-*"` automatically uses git mirror
    - Pass `--git-mirror` or `--aur-rpc` to force either.
-- `grimaur list` to see installed "foreign" packages recognized by pacman -Qm
+- `grimoire list` to see installed "foreign" packages recognized by pacman -Qm
 
 ### Inspect & Install & Remove Packages
 
-- `grimaur inspect <package> --full` Shows full depends
-- `grimaur install <package>` clones the repo, resolves dependencies, builds with `makepkg`
+- `grimoire inspect <package> --full` Shows full depends
+- `grimoire install <package>` clones the repo, resolves dependencies, builds with `makepkg`
    - Pass `--git-mirror` to skip AUR RPC
    - Pass `--use-ssh` use SSH instead of HTTPS
-- `grimaur remove <package>` to uninstall from pacman
+- `grimoire remove <package>` to uninstall from pacman
    - Pass `--clone` to delete the package's clone too
-   - `grimaur remove --cache` drops the search result cache
+   - `grimoire remove --cache` drops the search result cache
 
 ### Build from other sources
 The default source is the top section of `repos.conf` (auto-seeded to `[ARCH]`; see below).
@@ -52,44 +52,44 @@ Point at anything else that ships a `PKGBUILD` with `--repo-url`/`--repo` on
    - `--repo-url <url>` builds from a git URL (scheme optional: `github.com/u/r` works).
    - `--branch <ref>` / `--subdir <dir>` pick a ref, or a package nested in a monorepo
    - `repo --add <url> <name>` saves an alias; use it with `--repo <name>`.
-   - Add more URLs under the same name for fallback mirrors. `--ls`/`--rm` to manage. Saved to `~/.config/grimaur/repos.conf`
+   - Add more URLs under the same name for fallback mirrors. `--ls`/`--rm` to manage. Saved to `~/.config/grimoire/repos.conf`
    - `{pkg}` (the package name) or `{pkgbase}` (its pkgbase, looked up from the pacman sync DBs)
 
    ```bash
-   grimaur repo --add 'https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git' arch
-   grimaur install <pkg> --repo arch   # builds an official package from source
+   grimoire repo --add 'https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git' arch
+   grimoire install <pkg> --repo arch   # builds an official package from source
    ```
 A bare `search <term>` queries **every** section in `repos.conf` and merges the results (like `pacman -Ss`, each labeled by source), so an enabled alias shows up without `--repo`. `search --repo <name>` scopes to one (a package-per-dir subdir, branches, or the local sync DBs for a `{pkgbase}` template). Installing a result builds it from the source it was found in.
 
-See [`repos.conf.example`](./repos.conf.example) for ready-made `VUR` and `ARCH` aliases; copy it to `~/.config/grimaur/repos.conf` to start.
+See [`repos.conf.example`](./repos.conf.example) for ready-made `VUR` and `ARCH` aliases; copy it to `~/.config/grimoire/repos.conf` to start.
 
 The **first (top) section** in `repos.conf` is the default source when you don't pass `--repo`; `--repo <name>` overrides per command.
-On first use grimaur **auto-creates** `~/.config/grimaur/repos.conf` with `[ARCH]` as the default (build official packages from source)
+On first use grimoire **auto-creates** `~/.config/grimoire/repos.conf` with `[ARCH]` as the default (build official packages from source)
 AUR opt-in (a commented `[AUR]` section with RPC + git-mirror URLs).
 
 ### Stay Updated
-- `grimaur update` rebuilds every installed “foreign” package that has a newer release.
+- `grimoire update` rebuilds every installed “foreign” package that has a newer release.
    - Pass `--global` to update system first, then AUR packages
    - Pass `--global --system-only` for equivalent of `-Syu`
    - Pass `--global --index`, only sync package db `-Sy`
-- `grimaur update <pkg1> <pkg2>` limits the update run to specific packages.
-- `grimaur update --devel` Update all *-git packages aswell (needed for grimaur-git for example).
+- `grimoire update <pkg1> <pkg2>` limits the update run to specific packages.
+- `grimoire update --devel` Update all *-git packages aswell (needed for grimoire-git for example).
 - Combine with `--refresh` to force a fresh pull of every tracked package.
 
 ### Additional Options
 
-- Useful to build in `tmp/` pass `--dest-root` - (default: `$XDG_CACHE_HOME/grimaur` or `~/.cache/grimaur`)
-- For automating updates `grimaur update`:
+- Useful to build in `tmp/` pass `--dest-root` - (default: `$XDG_CACHE_HOME/grimoire` or `~/.cache/grimoire`)
+- For automating updates `grimoire update`:
    - Pass `--global --download`, download updates without installing `-Syuw`
    - Pass `--global --install`, to be used with command above `-Su`
 - Useful for scripting on top of Grimaur:
    - `--no-color` disables colored terminal output
-   - `grimaur search <term> --limit 10` limits results to the first N matches
-   - `grimaur search <term> --no-interactive` lists results without prompting to install
-   - `grimaur search <term> --plain` pacman `-Ss` style two-line output for scripting (best match first)
-   - `grimaur inspect <pkg> --plain` pacman `-Si` style `Key : Value` output for scripting
-   - `grimaur list --aur` lists every AUR package, like yay/paru `-Sl aur`
-- Force `grimaur fetch <package> --force` reclones even if the directory exists
+   - `grimoire search <term> --limit 10` limits results to the first N matches
+   - `grimoire search <term> --no-interactive` lists results without prompting to install
+   - `grimoire search <term> --plain` pacman `-Ss` style two-line output for scripting (best match first)
+   - `grimoire inspect <pkg> --plain` pacman `-Si` style `Key : Value` output for scripting
+   - `grimoire list --aur` lists every AUR package, like yay/paru `-Sl aur`
+- Force `grimoire fetch <package> --force` reclones even if the directory exists
 
 ### Details
 - Respects `IgnorePkg = x y z` from `/etc/pacman.conf`

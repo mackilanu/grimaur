@@ -14,7 +14,7 @@ git push
 
 ## Discussions
 
-Currently, questions, bugs and suggestions should be reported through [GitHub issue tracker](https://github.com/mackilanu/grimaur/issues).
+Currently, questions, bugs and suggestions should be reported through [GitHub issue tracker](https://github.com/mackilanu/grimoire/issues).
 
 ## Coding convention
 
@@ -24,8 +24,8 @@ Use `ruff` and `shfmt` or `pre-commit` [file](/.pre-commit-config.yaml).
 
 Why a single file?
 
-`grimaur` is used in installer flows which make it one `curl` or `wget` away:
+`grimoire` is used in installer flows which make it one `curl` or `wget` away:
 
-[rawlink](https://raw.githubusercontent.com/mackilanu/grimaur/master/grimaur)
+[rawlink](https://raw.githubusercontent.com/mackilanu/grimoire/master/grimoire)
 
 ---

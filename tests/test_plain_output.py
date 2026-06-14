@@ -3,7 +3,7 @@ import io
 import unittest
 import unittest.mock
 
-from grimaurshim import grimaur
+from grimaurshim import grimoire
 
 SAMPLE_RPC_INFO = {
 	"Name": "brave-bin",
@@ -48,7 +48,7 @@ def fields_dict(fields: list[tuple[str, str]]) -> dict[str, str]:
 
 class PlainSearchFormatTests(unittest.TestCase):
 	def test_two_lines_pacman_shape(self) -> None:
-		result = grimaur.SearchResult(
+		result = grimoire.SearchResult(
 			name="brave-bin",
 			version="1.81.9-1",
 			description="Web browser",
@@ -56,22 +56,22 @@ class PlainSearchFormatTests(unittest.TestCase):
 			score=0,
 		)
 		self.assertEqual(
-			grimaur.format_search_result_plain(result),
+			grimoire.format_search_result_plain(result),
 			["aur/brave-bin 1.81.9-1 [installed]", "    Web browser"],
 		)
 
 	def test_missing_fields_keep_two_line_invariant(self) -> None:
-		result = grimaur.SearchResult(
+		result = grimoire.SearchResult(
 			name="foo", version=None, description=None, installed=False, score=5
 		)
 		self.assertEqual(
-			grimaur.format_search_result_plain(result), ["aur/foo", "    "]
+			grimoire.format_search_result_plain(result), ["aur/foo", "    "]
 		)
 
 
 class RpcInfoFieldTests(unittest.TestCase):
 	def test_si_style_fields(self) -> None:
-		fields = fields_dict(grimaur.rpc_info_fields(SAMPLE_RPC_INFO))
+		fields = fields_dict(grimoire.rpc_info_fields(SAMPLE_RPC_INFO))
 		self.assertEqual(fields["Repository"], "aur")
 		self.assertEqual(fields["Version"], "1:1.81.9-1")
 		self.assertEqual(fields["URL"], "https://brave.com")
@@ -85,13 +85,13 @@ class RpcInfoFieldTests(unittest.TestCase):
 
 	def test_out_of_date_epoch_renders_as_date(self) -> None:
 		info = dict(SAMPLE_RPC_INFO, OutOfDate=1700000000)
-		fields = fields_dict(grimaur.rpc_info_fields(info))
+		fields = fields_dict(grimoire.rpc_info_fields(info))
 		self.assertEqual(fields["Out-of-date"], "2023-11-14")
 
 
 class SrcinfoInfoFieldTests(unittest.TestCase):
 	def test_fields_from_srcinfo(self) -> None:
-		fields = fields_dict(grimaur.srcinfo_info_fields("brave-bin", SAMPLE_SRCINFO))
+		fields = fields_dict(grimoire.srcinfo_info_fields("brave-bin", SAMPLE_SRCINFO))
 		self.assertEqual(fields["Name"], "brave-bin")
 		self.assertEqual(fields["Version"], "1:1.81.9-1")
 		self.assertEqual(fields["URL"], "https://brave.com")
@@ -104,14 +104,14 @@ class ListAurTests(unittest.TestCase):
 		out = io.StringIO()
 		with (
 			unittest.mock.patch.object(
-				grimaur, "aur_package_names", return_value=["foo", "bar"]
+				grimoire, "aur_package_names", return_value=["foo", "bar"]
 			),
 			unittest.mock.patch.object(
-				grimaur, "installed_package_set", return_value={"bar"}
+				grimoire, "installed_package_set", return_value={"bar"}
 			),
 			contextlib.redirect_stdout(out),
 		):
-			grimaur.list_aur_packages()
+			grimoire.list_aur_packages()
 		self.assertEqual(
 			out.getvalue(),
 			"aur foo unknown-version\naur bar unknown-version [installed]\n",
@@ -119,17 +119,17 @@ class ListAurTests(unittest.TestCase):
 
 	def test_empty_name_list_is_an_error(self) -> None:
 		with (
-			unittest.mock.patch.object(grimaur, "aur_package_names", return_value=[]),
-			self.assertRaises(grimaur.AurGitError),
+			unittest.mock.patch.object(grimoire, "aur_package_names", return_value=[]),
+			self.assertRaises(grimoire.AurGitError),
 		):
-			grimaur.list_aur_packages()
+			grimoire.list_aur_packages()
 
 
 class PrintInfoFieldsTests(unittest.TestCase):
 	def test_colon_alignment(self) -> None:
 		out = io.StringIO()
 		with contextlib.redirect_stdout(out):
-			grimaur.print_info_fields([("Name", "foo"), ("Depends On", "bar")])
+			grimoire.print_info_fields([("Name", "foo"), ("Depends On", "bar")])
 		self.assertEqual(out.getvalue(), "Name       : foo\nDepends On : bar\n")
 
 

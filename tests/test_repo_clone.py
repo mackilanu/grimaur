@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from grimaurshim import grimaur
+from grimaurshim import grimoire
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -65,12 +65,12 @@ class EnsureCloneRefTests(unittest.TestCase):
 		# default globals already False at import; pin them so a developer's
 		# environment can't flip shallow clones on and break commit checkout.
 		for name in ("SHALLOW_CLONE", "USE_SSH", "USE_AUR_RPC"):
-			patcher = mock.patch.object(grimaur, name, False)
+			patcher = mock.patch.object(grimoire, name, False)
 			patcher.start()
 			self.addCleanup(patcher.stop)
 
 	def _ensure(self, branch: str | None, dest: Path, *, refresh: bool = False) -> Path:
-		build_dir: Path = grimaur.ensure_clone(
+		build_dir: Path = grimoire.ensure_clone(
 			"foo",
 			dest,
 			refresh=refresh,
@@ -119,8 +119,8 @@ class EnsureCloneRefTests(unittest.TestCase):
 				self.assertEqual(self._pkgver(build_dir), expected)
 
 	def test_missing_subdir_raises(self) -> None:
-		with self.assertRaises(grimaur.AurGitError):
-			grimaur.ensure_clone(
+		with self.assertRaises(grimoire.AurGitError):
+			grimoire.ensure_clone(
 				"foo",
 				Path(tempfile.mkdtemp(dir=self.root)),
 				refresh=False,
@@ -152,23 +152,23 @@ class UpdateRepoPrimitivesTests(unittest.TestCase):
 		self.dest = self.root / "dest"
 
 	def test_git_remote_head_matches_rev_parse(self) -> None:
-		head = grimaur._git_remote_head(f"file://{self.src}", "master")
+		head = grimoire._git_remote_head(f"file://{self.src}", "master")
 		self.assertEqual(head, _git(self.src, "rev-parse", "HEAD"))
 
 	def test_git_remote_head_none_on_bad_url(self) -> None:
-		self.assertIsNone(grimaur._git_remote_head("file:///nope/x.git", "master"))
+		self.assertIsNone(grimoire._git_remote_head("file:///nope/x.git", "master"))
 
 	def test_versioned_check_reads_repo_srcinfo(self) -> None:
 		# Mirror update's versioned path: a container subdir + package name descends
 		# to pkgs/foo and the version comes from the repo's .SRCINFO, not the AUR.
-		r_url, r_branch, r_subdir, r_fallbacks = grimaur._resolve_repo_for_package(
+		r_url, r_branch, r_subdir, r_fallbacks = grimoire._resolve_repo_for_package(
 			"foo",
 			alias=None,
 			repo_url=f"file://{self.src}",
 			branch="master",
 			subdir="pkgs",
 		)
-		pkg_dir = grimaur.ensure_clone(
+		pkg_dir = grimoire.ensure_clone(
 			"foo",
 			self.dest,
 			refresh=False,
@@ -178,7 +178,7 @@ class UpdateRepoPrimitivesTests(unittest.TestCase):
 			repo_fallbacks=r_fallbacks,
 		)
 		self.assertEqual(pkg_dir, self.dest / "foo" / "pkgs" / "foo")
-		version, _ = grimaur._parse_srcinfo_metadata(grimaur.read_srcinfo(pkg_dir))
+		version, _ = grimoire._parse_srcinfo_metadata(grimoire.read_srcinfo(pkg_dir))
 		self.assertEqual(version, "2.5-1")
 
 
@@ -199,7 +199,7 @@ class OriginSwitchTests(unittest.TestCase):
 			_git(repo, "add", "-A")
 			_git(repo, "commit", "-qm", "x")
 		for name in ("SHALLOW_CLONE", "USE_SSH", "USE_AUR_RPC"):
-			patcher = mock.patch.object(grimaur, name, False)
+			patcher = mock.patch.object(grimoire, name, False)
 			patcher.start()
 			self.addCleanup(patcher.stop)
 
@@ -207,21 +207,21 @@ class OriginSwitchTests(unittest.TestCase):
 		return (build_dir / "PKGBUILD").read_text().split("pkgver=")[1].split("\n")[0]
 
 	def test_switching_source_reclones(self) -> None:
-		d1 = grimaur.ensure_clone(
+		d1 = grimoire.ensure_clone(
 			"foo", self.dest, refresh=False, repo_url=f"file://{self.a}"
 		)
 		self.assertEqual(self._ver(d1), "a")
 		# same dest/package, different source URL -> origin mismatch -> reclone from b
-		d2 = grimaur.ensure_clone(
+		d2 = grimoire.ensure_clone(
 			"foo", self.dest, refresh=False, repo_url=f"file://{self.b}"
 		)
 		self.assertEqual(self._ver(d2), "b")
 
 	def test_same_source_reuses(self) -> None:
-		grimaur.ensure_clone(
+		grimoire.ensure_clone(
 			"foo", self.dest, refresh=False, repo_url=f"file://{self.a}"
 		)
-		d = grimaur.ensure_clone(
+		d = grimoire.ensure_clone(
 			"foo", self.dest, refresh=False, repo_url=f"file://{self.a}"
 		)
 		self.assertEqual(self._ver(d), "a")
@@ -248,13 +248,13 @@ class SearchRepoTests(unittest.TestCase):
 		_git(self.src, "add", "-A")
 		_git(self.src, "commit", "-qm", "init")
 		patcher = mock.patch.object(
-			grimaur, "installed_package_set", return_value=set()
+			grimoire, "installed_package_set", return_value=set()
 		)
 		patcher.start()
 		self.addCleanup(patcher.stop)
 
 	def test_enumerates_subdir_packages_with_metadata(self) -> None:
-		results = grimaur.search_packages_repo(
+		results = grimoire.search_packages_repo(
 			f"file://{self.src}",
 			"master",
 			"pkgs",
@@ -271,7 +271,7 @@ class SearchRepoTests(unittest.TestCase):
 		self.assertEqual(by_name["foo"].source, "VUR")
 
 	def test_needle_filters(self) -> None:
-		results = grimaur.search_packages_repo(
+		results = grimoire.search_packages_repo(
 			f"file://{self.src}",
 			"master",
 			"pkgs",
@@ -285,7 +285,7 @@ class SearchRepoTests(unittest.TestCase):
 
 	def test_enum_clone_lands_under_dest_root_not_tmp(self) -> None:
 		dest = self.root / "dest"
-		grimaur.search_packages_repo(
+		grimoire.search_packages_repo(
 			f"file://{self.src}",
 			"master",
 			"pkgs",
@@ -298,7 +298,7 @@ class SearchRepoTests(unittest.TestCase):
 		self.assertTrue((dest / ".searchrepo").is_dir())
 
 	def test_source_label_in_plain_and_pretty(self) -> None:
-		result = grimaur.SearchResult(
+		result = grimoire.SearchResult(
 			name="foo",
 			version="1.0-1",
 			description="d",
@@ -307,17 +307,17 @@ class SearchRepoTests(unittest.TestCase):
 			source="VUR",
 		)
 		self.assertTrue(
-			grimaur.format_search_result_plain(result)[0].startswith("VUR/foo")
+			grimoire.format_search_result_plain(result)[0].startswith("VUR/foo")
 		)
-		self.assertIn("[https VUR]", grimaur.format_search_result(1, result)[0])
+		self.assertIn("[https VUR]", grimoire.format_search_result(1, result)[0])
 
 	def test_templated_alias_without_index_rejected(self) -> None:
 		# No sync DB to fall back on -> templated alias has nothing to enumerate.
 		with (
-			mock.patch.object(grimaur, "_sync_db_packages", return_value=()),
-			self.assertRaises(grimaur.AurGitError),
+			mock.patch.object(grimoire, "_sync_db_packages", return_value=()),
+			self.assertRaises(grimoire.AurGitError),
 		):
-			grimaur.search_packages_repo(
+			grimoire.search_packages_repo(
 				"https://x/{pkg}.git",
 				None,
 				None,
@@ -335,8 +335,8 @@ class SearchRepoTests(unittest.TestCase):
 			("amd-ucode", "1-1", "AMD microcode", "core"),
 			("yay", "12-1", "AUR helper", "cachyos"),
 		)
-		with mock.patch.object(grimaur, "_sync_db_packages", return_value=fake):
-			results = grimaur.search_packages_repo(
+		with mock.patch.object(grimoire, "_sync_db_packages", return_value=fake):
+			results = grimoire.search_packages_repo(
 				"https://gitlab/{pkgbase}.git",
 				None,
 				None,
@@ -350,9 +350,9 @@ class SearchRepoTests(unittest.TestCase):
 		# label is the real repo, not the alias, and marked as a local DB source
 		self.assertEqual(results[0].source, "core")
 		self.assertTrue(results[0].from_db)
-		self.assertIn("[db core]", grimaur.format_search_result(1, results[0])[0])
+		self.assertIn("[db core]", grimoire.format_search_result(1, results[0])[0])
 		self.assertTrue(
-			grimaur.format_search_result_plain(results[0])[0].startswith(
+			grimoire.format_search_result_plain(results[0])[0].startswith(
 				"core/amd-ucode"
 			)
 		)

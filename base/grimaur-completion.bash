@@ -1,5 +1,5 @@
-# Bash completion for grimaur helper
-# Source this file or place it in bash_completion.d to enable `grimaur` completions.
+# Bash completion for grimoire helper
+# Source this file or place it in bash_completion.d to enable `grimoire` completions.
 
 _grimaur_completion()
 {
@@ -95,13 +95,13 @@ _grimaur_completion()
             mapfile -t COMPREPLY < <(compgen -W "$packages" -- "$cur")
             ;;
         install|fetch|inspect|search)
-            # Complete AUR names from the cache grimaur writes alongside
+            # Complete AUR names from the cache grimoire writes alongside
             # packages.json; seed it in the background on first use.
-            local cache="${XDG_CACHE_HOME:-$HOME/.cache}/grimaur/completion.cache"
+            local cache="${XDG_CACHE_HOME:-$HOME/.cache}/grimoire/completion.cache"
             if [[ -r "$cache" ]]; then
                 mapfile -t COMPREPLY < <(grep -- "^$cur" "$cache" 2>/dev/null | head -200)
             else
-                (grimaur list --aur >/dev/null 2>&1 &)
+                (grimoire list --aur >/dev/null 2>&1 &)
             fi
             ;;
         *)
@@ -110,4 +110,4 @@ _grimaur_completion()
     esac
 }
 
-complete -F _grimaur_completion grimaur
+complete -F _grimaur_completion grimoire
