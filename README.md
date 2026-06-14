@@ -54,16 +54,18 @@ with `--repo-url`/`--repo` on `install`, `fetch`, `inspect`, `search`, and `upda
 - `--branch <ref>` / `--subdir <dir>` pick a ref, or a package nested in a monorepo
 - `grimaur repo --add <url> <name>` saves an alias; use it with `--repo <name>`. Add more
   URLs under the same name for fallback mirrors. `--ls`/`--rm` to manage.
-- `{pkg}` in an alias URL is replaced by the package name. For example, Arch's official
-  packages live one repo each on GitLab:
+- `{pkg}` (the package name) or `{pkgbase}` (its pkgbase, looked up from the pacman sync
+  DBs) in an alias URL select a repo-per-package forge. Arch's official packages live one
+  repo each on GitLab, keyed by pkgbase, so `{pkgbase}` builds split packages too
+  (`amd-ucode` -> `linux-firmware`):
    ```bash
-   grimaur repo --add 'https://gitlab.archlinux.org/archlinux/packaging/packages/{pkg}.git' arch
+   grimaur repo --add 'https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git' arch
    grimaur install <pkg> --repo arch   # builds an official package from source
    ```
 
 The package name selects the source: a branch on the AUR mirror, or a repo/subdir via
-`{pkg}` or monorepo layout. `search --repo <name>` lists a repo's packages (one dir per
-package, or branches); templated `{pkg}` aliases have no index so they can't be searched.
+`{pkg}`/`{pkgbase}` or monorepo layout. `search --repo <name>` lists a repo's packages
+(one dir per package, or branches); templated aliases have no index so can't be searched.
 
 ### Stay Updated
 - `grimaur update` rebuilds every installed “foreign” package that has a newer release.

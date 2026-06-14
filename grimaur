@@ -166,6 +166,45 @@ def _pacman_db_path() -> Path:
 	return Path("/var/lib/pacman")
 
 
+_DESC_FIELD_RE = re.compile(r"%(\w+)%\n([^\n]*)")
+
+
+@cache
+def _resolve_pkgbase(package: str) -> str:
+	# pkgname -> pkgbase via the pacman sync DBs (each `desc` carries %BASE%). Lets a
+	# pkgbase-keyed forge (Arch GitLab, the AUR) be reached by package name even for
+	# split packages (amd-ucode -> linux-firmware). Falls back to the name if unknown.
+	# DBs may be gzip (Arch) or zstd (CachyOS); `r:*` autodetects.
+	import tarfile
+
+	sync = _pacman_db_path() / "sync"
+	prefix = f"{package}-"
+	try:
+		dbs = sorted(sync.glob("*.db"))
+	except OSError:
+		return package
+	for db in dbs:
+		try:
+			with tarfile.open(db, "r:*") as tar:
+				for member in tar:
+					name = member.name
+					if not name.endswith("/desc") or not name.startswith(prefix):
+						continue
+					extracted = tar.extractfile(member)
+					if extracted is None:
+						continue
+					fields = dict(
+						_DESC_FIELD_RE.findall(
+							extracted.read().decode("utf-8", "replace")
+						)
+					)
+					if fields.get("NAME") == package:
+						return fields.get("BASE") or package
+		except OSError, tarfile.TarError:
+			continue
+	return package
+
+
 def _read_pacman_auth() -> str | None:
 	for path in _makepkg_conf_paths():
 		try:
@@ -2246,7 +2285,7 @@ def search_packages_repo(
 	limit: int | None,
 	source: str,
 ) -> list[SearchResult]:
-	if "{pkg}" in repo_url:
+	if "{pkg}" in repo_url or "{pkgbase}" in repo_url:
 		raise AurGitError(
 			f"alias is templated ({repo_url}); it has no package index to search. "
 			"Search needs a repo that lists its packages (a subdir or branches)."
@@ -3029,9 +3068,13 @@ def _resolve_repo_for_package(
 	def _resolve(raw: str) -> tuple[str, str | None, str | None]:
 		# `{pkg}` lets one alias serve a whole repo-per-package forge (e.g. the
 		# Arch GitLab): the package name selects the repo, like it selects a
-		# branch on the AUR mirror.
-		if package and "{pkg}" in raw:
-			raw = raw.replace("{pkg}", package)
+		# branch on the AUR mirror. `{pkgbase}` resolves the name to its pkgbase
+		# first, so split packages (amd-ucode -> linux-firmware) hit the right repo.
+		if package:
+			if "{pkgbase}" in raw:
+				raw = raw.replace("{pkgbase}", _resolve_pkgbase(package))
+			if "{pkg}" in raw:
+				raw = raw.replace("{pkg}", package)
 		clone_url, parsed_branch, parsed_subdir = parse_repo_url(raw)
 		# Explicit flags win over whatever the URL encoded.
 		return clone_url, branch or parsed_branch, subdir or parsed_subdir

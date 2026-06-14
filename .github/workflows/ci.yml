@@ -102,9 +102,11 @@ jobs:
           rm -rf ~/.cache/grimaur/grimaur-git
           ./grimaur --git-mirror fetch grimaur-git
           ./grimaur inspect grimaur-git --repo VUR --target PKGBUILD | grep -q '^pkgname=grimaur-git'
-          # {pkg} templating against the Arch GitLab (repo-per-package)
-          ./grimaur repo --add 'https://gitlab.archlinux.org/archlinux/packaging/packages/{pkg}.git' arch
-          ./grimaur inspect bash --repo arch --target PKGBUILD | grep -q '^pkgname=bash'
+          # {pkgbase} templating against the Arch GitLab (repo-per-pkgbase)
+          ./grimaur repo --add 'https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git' arch
+          ./grimaur inspect bash --repo arch --target PKGBUILD | grep -q '^pkgbase=bash'
+          # split package resolves name -> pkgbase via the sync DB (amd-ucode -> linux-firmware)
+          ./grimaur inspect amd-ucode --repo arch --target PKGBUILD | grep -q '^pkgbase=linux-firmware'
 
       - name: Search a custom repo (VUR enumeration + templated rejection)
         run: |

@@ -2,11 +2,14 @@
 build-dir resolution, and arg precedence."""
 
 import argparse
+import io
 import os
 import shutil
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from grimaurshim import grimaur
 
@@ -201,6 +204,52 @@ class ResolvePackageDirTests(unittest.TestCase):
 			grimaur._resolve_package_dir(self.root, "pkgs", "foo"),
 			self.root / "pkgs",
 		)
+
+
+class ResolvePkgbaseTests(unittest.TestCase):
+	def _make_db(self, sync: Path, name: str, descs: dict[str, str]) -> None:
+		# descs: member-dir -> desc text. Write a gzip sync DB like pacman's.
+		sync.mkdir(parents=True, exist_ok=True)
+		with tarfile.open(sync / name, "w:gz") as tar:
+			for member_dir, text in descs.items():
+				raw = text.encode()
+				info = tarfile.TarInfo(f"{member_dir}/desc")
+				info.size = len(raw)
+				tar.addfile(info, io.BytesIO(raw))
+
+	def _resolve(self, base_dir: Path, package: str) -> str:
+		grimaur._resolve_pkgbase.cache_clear()
+		with mock.patch.object(grimaur, "_pacman_db_path", return_value=base_dir):
+			return str(grimaur._resolve_pkgbase(package))
+
+	def test_split_package_resolves_to_base(self) -> None:
+		with tempfile.TemporaryDirectory() as tmp:
+			base = Path(tmp)
+			self._make_db(
+				base / "sync",
+				"core.db",
+				{
+					"amd-ucode-20250101-1": "%NAME%\namd-ucode\n\n%BASE%\nlinux-firmware\n",
+					"gcc-ada-14-1": "%NAME%\ngcc-ada\n\n%BASE%\ngcc\n",
+					"gcc-14-1": "%NAME%\ngcc\n\n%BASE%\ngcc\n",
+				},
+			)
+			# prefix collision: gcc-ada must not satisfy a lookup for gcc
+			self.assertEqual(self._resolve(base, "amd-ucode"), "linux-firmware")
+			self.assertEqual(self._resolve(base, "gcc"), "gcc")
+			self.assertEqual(self._resolve(base, "gcc-ada"), "gcc")
+
+	def test_unknown_package_falls_back_to_name(self) -> None:
+		with tempfile.TemporaryDirectory() as tmp:
+			base = Path(tmp)
+			self._make_db(
+				base / "sync", "core.db", {"foo-1-1": "%NAME%\nfoo\n\n%BASE%\nfoo\n"}
+			)
+			self.assertEqual(self._resolve(base, "not-here"), "not-here")
+
+	def test_no_sync_dir_falls_back_to_name(self) -> None:
+		with tempfile.TemporaryDirectory() as tmp:
+			self.assertEqual(self._resolve(Path(tmp), "whatever"), "whatever")
 
 
 class NormalizeGitUrlTests(unittest.TestCase):
