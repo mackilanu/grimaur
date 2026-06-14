@@ -204,6 +204,50 @@ def _maybe_ssh_rewrite(url: str) -> str:
 	return f"ssh://{user}@{parsed.netloc}/{path}"
 
 
+def parse_repo_url(url: str) -> tuple[str, str | None, str | None]:
+	"""Split a forge directory-view URL into (clone_url, ref, subdir).
+
+	Recognizes GitHub/GitLab/Gitea(Codeberg) "tree"/"src" URLs so --repo-url can
+	point straight at a subdirectory of a repo. A plain clone URL passes through
+	unchanged (ref/subdir None). The ref is assumed to be a single path segment;
+	for branches containing slashes, pass --branch/--subdir explicitly to override.
+	"""
+	parsed = urllib.parse.urlparse(url)
+	if parsed.scheme not in ("http", "https"):
+		return url, None, None
+	parts = [p for p in parsed.path.split("/") if p]
+
+	def _rebuild(
+		repo_parts: list[str], ref: str, sub: list[str]
+	) -> tuple[str, str, str | None]:
+		base = f"{parsed.scheme}://{parsed.netloc}/" + "/".join(repo_parts)
+		if not base.endswith(".git"):
+			base += ".git"
+		return base, ref, ("/".join(sub) or None)
+
+	# GitHub: /<owner>/<repo>/tree/<ref>/<subpath...>
+	if parsed.netloc == "github.com" and "tree" in parts:
+		i = parts.index("tree")
+		if i >= 2 and len(parts) > i + 1:
+			return _rebuild(parts[:i], parts[i + 1], parts[i + 2 :])
+	# GitLab: /<owner>/<repo>/-/tree/<ref>/<subpath...>
+	if "-" in parts:
+		d = parts.index("-")
+		if d >= 2 and len(parts) > d + 2 and parts[d + 1] == "tree":
+			return _rebuild(parts[:d], parts[d + 2], parts[d + 3 :])
+	# Gitea/Codeberg: /<owner>/<repo>/src/{branch,tag,commit}/<ref>/<subpath...>
+	if "src" in parts:
+		i = parts.index("src")
+		if (
+			i >= 2
+			and len(parts) > i + 2
+			and parts[i + 1] in ("branch", "tag", "commit")
+		):
+			return _rebuild(parts[:i], parts[i + 2], parts[i + 3 :])
+
+	return url, None, None
+
+
 # Mirror SSH_REWRITE_HOSTS as git insteadOf rules via GIT_CONFIG_* env vars
 # this make the ssh only rule persist even if invoked by a child PKGBUILD/process
 def _ssh_rewrite_git_env() -> dict[str, str]:
@@ -517,6 +561,18 @@ def run_command(
 	return completed
 
 
+def _resolve_build_dir(clone_root: Path, subdir: str | None) -> Path:
+	if not subdir:
+		return clone_root
+	root = clone_root.resolve()
+	target = (clone_root / subdir).resolve()
+	if target != root and root not in target.parents:
+		raise AurGitError(f"Subdirectory '{subdir}' escapes clone root {clone_root}")
+	if not target.is_dir():
+		raise AurGitError(f"Subdirectory '{subdir}' not found in clone at {clone_root}")
+	return target
+
+
 def ensure_clone(
 	package: str,
 	dest_root: Path,
@@ -524,6 +580,8 @@ def ensure_clone(
 	refresh: bool = False,
 	force_reclone: bool = False,
 	repo_url: str | None = None,
+	branch: str | None = None,
+	subdir: str | None = None,
 ) -> Path:
 	dest_root.mkdir(parents=True, exist_ok=True)
 	package_dir = dest_root / package
@@ -539,9 +597,17 @@ def ensure_clone(
 
 	if repo_url:
 		remote_url = _maybe_ssh_rewrite(repo_url) if USE_SSH else repo_url
-		clone_extra: list[str] = []
-		fetch_refspec: tuple[str, ...] = ()
-		reset_targets: tuple[str, ...] = ("origin/HEAD",)
+		clone_extra: list[str]
+		fetch_refspec: tuple[str, ...]
+		reset_targets: tuple[str, ...]
+		if branch:
+			clone_extra = ["--branch", branch, "--single-branch"]
+			fetch_refspec = (branch,)
+			reset_targets = (f"origin/{branch}", "origin/HEAD")
+		else:
+			clone_extra = []
+			fetch_refspec = ()
+			reset_targets = ("origin/HEAD",)
 		recover_on_reset_fail = False
 	elif USE_AUR_RPC:
 		remote_url = f"{get_official_aur_git_base()}/{package}.git"
@@ -584,8 +650,11 @@ def ensure_clone(
 					dest_root,
 					refresh=False,
 					force_reclone=True,
+					repo_url=repo_url,
+					branch=branch,
+					subdir=subdir,
 				)
-		return package_dir
+		return _resolve_build_dir(package_dir, subdir)
 
 	if package_dir.exists():
 		shutil.rmtree(package_dir)
@@ -595,7 +664,7 @@ def ensure_clone(
 	clone_cmd += [remote_url, str(package_dir)]
 	run_command(clone_cmd)
 
-	return package_dir
+	return _resolve_build_dir(package_dir, subdir)
 
 
 def read_srcinfo(package_dir: Path) -> str:
@@ -891,7 +960,7 @@ def _search_aur_candidates(dep: str, *, limit: int = 25) -> list[str]:
 	if len(dep) >= 3:
 		patterns.append(f"refs/heads/*{dep}*")
 	seen: set[str] = set()
-	results: list[str] = []
+	results = []
 	for pattern in patterns:
 		try:
 			output = run_command(
@@ -1150,7 +1219,7 @@ def fetch_git_file(package: str, path: str) -> str | None:
 		with urllib.request.urlopen(url, timeout=10) as response:  # noqa: S310 - url built from hardcoded https GitHub base
 			if response.status != 200:
 				return None
-			data = response.read()
+			data: bytes = response.read()
 	except urllib.error.URLError:
 		return None
 	try:
@@ -1274,6 +1343,8 @@ def install_package(
 	visited: set[str] | None = None,
 	preinstalled_official: set[str] | None = None,
 	repo_url: str | None = None,
+	branch: str | None = None,
+	subdir: str | None = None,
 	update_to: str | None = None,
 ) -> None:
 	visited = visited or set()
@@ -1303,7 +1374,12 @@ def install_package(
 	if repo_url:
 		# Skip AUR RPC when using custom repo URL
 		package_dir = ensure_clone(
-			package, dest_root, refresh=refresh, repo_url=repo_url
+			package,
+			dest_root,
+			refresh=refresh,
+			repo_url=repo_url,
+			branch=branch,
+			subdir=subdir,
 		)
 	elif USE_AUR_RPC:
 		info = aur_rpc_info(package)
@@ -1319,7 +1395,12 @@ def install_package(
 	else:
 		if package_dir is None:
 			package_dir = ensure_clone(
-				package, dest_root, refresh=refresh, repo_url=repo_url
+				package,
+				dest_root,
+				refresh=refresh,
+				repo_url=repo_url,
+				branch=branch,
+				subdir=subdir,
 			)
 		srcinfo = read_srcinfo(package_dir)
 		_, pkgdesc, deps = parse_dependencies(srcinfo)
@@ -1388,7 +1469,12 @@ def install_package(
 
 	if package_dir is None:
 		package_dir = ensure_clone(
-			package, dest_root, refresh=refresh, repo_url=repo_url
+			package,
+			dest_root,
+			refresh=refresh,
+			repo_url=repo_url,
+			branch=branch,
+			subdir=subdir,
 		)
 
 	build_and_install(package_dir, noconfirm=noconfirm, refresh=refresh)
@@ -1774,19 +1860,22 @@ def search_packages_git(
 	total_candidates = len(candidates)
 
 	# Fetch metadata in parallel for speed
-	def fetch_metadata(score_pkg):
+	def fetch_metadata(score_pkg: tuple[int, str]) -> SearchResult:
 		score, package = score_pkg
-		version = None
-		description = None
+		version: str | None = None
+		description: str | None = None
 		# Cached for search responsiveness; the update flow calls
 		# git_srcinfo_metadata directly so version checks stay live.
+		# Cache hits come back as JSON lists, not the original tuple.
 		meta = cached_json(
 			f"srcinfo/{package}.json",
 			CACHE_TTL,
 			lambda: git_srcinfo_metadata(package),
 		)
-		if meta:
-			version, description = meta
+		if isinstance(meta, (list, tuple)) and len(meta) == 2:
+			raw_version, raw_description = meta
+			version = raw_version if isinstance(raw_version, str) else None
+			description = raw_description if isinstance(raw_description, str) else None
 		return SearchResult(
 			name=package,
 			version=version,
@@ -1867,14 +1956,10 @@ def search_packages_rpc(
 		name_value = entry.get("Name")
 		if not isinstance(name_value, str):
 			continue
-		version = (
-			entry.get("Version") if isinstance(entry.get("Version"), str) else None
-		)
-		description = (
-			entry.get("Description")
-			if isinstance(entry.get("Description"), str)
-			else None
-		)
+		raw_version = entry.get("Version")
+		version = raw_version if isinstance(raw_version, str) else None
+		raw_description = entry.get("Description")
+		description = raw_description if isinstance(raw_description, str) else None
 		votes = None
 		votes_value = entry.get("NumVotes")
 		if isinstance(votes_value, int | float | str):
@@ -2207,6 +2292,8 @@ def inspect_package(
 	target: str,
 	show_deps: bool,
 	repo_url: str | None = None,
+	branch: str | None = None,
+	subdir: str | None = None,
 	plain: bool = False,
 ) -> None:
 	if USE_AUR_RPC and target == "info" and not repo_url:
@@ -2215,11 +2302,8 @@ def inspect_package(
 			if plain:
 				print_info_fields(rpc_info_fields(info))
 				return
-			description = (
-				info.get("Description")
-				if isinstance(info.get("Description"), str)
-				else None
-			)
+			raw_description = info.get("Description")
+			description = raw_description if isinstance(raw_description, str) else None
 			_print_info_summary(
 				package,
 				description,
@@ -2230,7 +2314,14 @@ def inspect_package(
 		if USE_AUR_RPC:
 			raise AurGitError(f"Package '{package}' not found via AUR RPC")
 
-	package_dir = ensure_clone(package, dest_root, refresh=refresh, repo_url=repo_url)
+	package_dir = ensure_clone(
+		package,
+		dest_root,
+		refresh=refresh,
+		repo_url=repo_url,
+		branch=branch,
+		subdir=subdir,
+	)
 	if target == "PKGBUILD":
 		pkgbuild_path = package_dir / "PKGBUILD"
 		if not pkgbuild_path.exists():
@@ -2256,24 +2347,30 @@ def fetch_package(
 	refresh: bool,
 	force: bool,
 	repo_url: str | None = None,
+	branch: str | None = None,
+	subdir: str | None = None,
 ) -> Path:
 	package_dir = ensure_clone(
-		package, dest_root, refresh=refresh, force_reclone=force, repo_url=repo_url
+		package,
+		dest_root,
+		refresh=refresh,
+		force_reclone=force,
+		repo_url=repo_url,
+		branch=branch,
+		subdir=subdir,
 	)
 	print(f"Package fetched to {package_dir}")
 	return package_dir
 
 
-class _GrimaurArgParser(argparse.ArgumentParser):
-	def __init__(self, *args: object, **kwargs: object) -> None:
-		super().__init__(*args, **kwargs)
-		for action in self._actions:
-			if isinstance(action, argparse._HelpAction):
-				action.help = "Show this help message and exit"
+def _capitalize_help_action(parser: argparse.ArgumentParser) -> None:
+	for action in parser._actions:
+		if isinstance(action, argparse._HelpAction):
+			action.help = "Show this help message and exit"
 
 
 def build_parser() -> argparse.ArgumentParser:
-	parser = _GrimaurArgParser(
+	parser = argparse.ArgumentParser(
 		description="Work with AUR packages via the git mirror or AUR RPC"
 	)
 	parser.add_argument(
@@ -2330,6 +2427,11 @@ def build_parser() -> argparse.ArgumentParser:
 		"--force", action="store_true", help="Reclone even if directory exists"
 	)
 	fetch_parser.add_argument("--repo-url", help="Clone from custom Git URL")
+	fetch_parser.add_argument(
+		"--subdir",
+		help="Build from this subdirectory of the repo (relative to clone root)",
+	)
+	fetch_parser.add_argument("--branch", help="Git branch, tag, or ref to check out")
 
 	install_parser = subparsers.add_parser(
 		"install", help="Resolve dependencies and build/install a package"
@@ -2339,6 +2441,11 @@ def build_parser() -> argparse.ArgumentParser:
 		"--noconfirm", action="store_true", help="Pass --noconfirm to pacman/makepkg"
 	)
 	install_parser.add_argument("--repo-url", help="Clone from custom Git URL")
+	install_parser.add_argument(
+		"--subdir",
+		help="Build from this subdirectory of the repo (relative to clone root)",
+	)
+	install_parser.add_argument("--branch", help="Git branch, tag, or ref to check out")
 
 	remove_parser = subparsers.add_parser("remove", help="Remove an installed package")
 	remove_parser.add_argument("package", nargs="?", help="Package name to remove")
@@ -2444,6 +2551,11 @@ def build_parser() -> argparse.ArgumentParser:
 		"--repo-url", help="Inspect package from custom Git URL"
 	)
 	inspect_parser.add_argument(
+		"--subdir",
+		help="Inspect this subdirectory of the repo (relative to clone root)",
+	)
+	inspect_parser.add_argument("--branch", help="Git branch, tag, or ref to check out")
+	inspect_parser.add_argument(
 		"--plain",
 		action="store_true",
 		help="pacman -Si style 'Key : Value' output for scripting (info target only)",
@@ -2457,7 +2569,29 @@ def build_parser() -> argparse.ArgumentParser:
 		help="List every AUR package instead (like yay/paru -Sl aur)",
 	)
 
+	_capitalize_help_action(parser)
+	for subparser in subparsers.choices.values():
+		_capitalize_help_action(subparser)
+
 	return parser
+
+
+def _resolve_repo_target(
+	args: argparse.Namespace,
+) -> tuple[str | None, str | None, str | None]:
+	"""Resolve (repo_url, branch, subdir) from args, expanding forge tree URLs.
+
+	Explicit --branch/--subdir override anything parsed out of a tree URL.
+	"""
+	repo_url = getattr(args, "repo_url", None)
+	branch = getattr(args, "branch", None)
+	subdir = getattr(args, "subdir", None)
+	if repo_url:
+		clone_url, parsed_branch, parsed_subdir = parse_repo_url(repo_url)
+		repo_url = clone_url
+		branch = branch or parsed_branch
+		subdir = subdir or parsed_subdir
+	return repo_url, branch, subdir
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -2557,16 +2691,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 	try:
 		if args.command == "fetch":
+			repo_url, branch, subdir = _resolve_repo_target(args)
 			fetch_package(
 				args.package,
 				dest_root,
 				refresh=refresh,
 				force=args.force,
-				repo_url=getattr(args, "repo_url", None),
+				repo_url=repo_url,
+				branch=branch,
+				subdir=subdir,
 			)
 		elif args.command == "install":
 			preinstalled_official: set[str] | None = None
-			repo_url = getattr(args, "repo_url", None)
+			repo_url, branch, subdir = _resolve_repo_target(args)
 			if USE_AUR_RPC and not repo_url:
 				missing_official, unresolved = collect_missing_official_packages(
 					args.package,
@@ -2591,6 +2728,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 				noconfirm=args.noconfirm,
 				preinstalled_official=preinstalled_official,
 				repo_url=repo_url,
+				branch=branch,
+				subdir=subdir,
 			)
 		elif args.command == "remove":
 			if args.cache:
@@ -2668,19 +2807,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 				return 0
 
 			print(style("Installing selected packages:", CYAN))
-			for item in selected:
-				label = style(item.name, BOLD)
-				if item.version:
-					label = f"{label} {style(item.version, GREEN)}"
+			for pkg in selected:
+				label = style(pkg.name, BOLD)
+				if pkg.version:
+					label = f"{label} {style(pkg.version, GREEN)}"
 				print(f"  {label}")
 
 			exit_code = 0
 			shared_visited: set[str] = set()
 			shared_preinstalled_official: set[str] = set()
-			for item in selected:
+			for pkg in selected:
 				try:
 					install_package(
-						item.name,
+						pkg.name,
 						dest_root,
 						refresh=refresh,
 						noconfirm=args.noconfirm,
@@ -2689,9 +2828,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 					)
 				except AurGitError as exc:
 					exit_code = 1
-					print(f"error installing {item.name}: {exc}", file=sys.stderr)
+					print(f"error installing {pkg.name}: {exc}", file=sys.stderr)
 			return exit_code
 		elif args.command == "inspect":
+			repo_url, branch, subdir = _resolve_repo_target(args)
 			inspect_package(
 				args.package,
 				dest_root,
@@ -2700,7 +2840,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 				if args.target == "PKGBUILD"
 				else ("SRCINFO" if args.target == "SRCINFO" else "info"),
 				show_deps=args.full,
-				repo_url=getattr(args, "repo_url", None),
+				repo_url=repo_url,
+				branch=branch,
+				subdir=subdir,
 				plain=args.plain,
 			)
 		elif args.command == "list":

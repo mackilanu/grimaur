@@ -11,3 +11,8 @@ repos:
       - id: shfmt
         args: ["-i", "0", "-ci", "-ln", "bash", "-d"]
         files: ^PKGBUILD$
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.1.0
+    hooks:
+    - id: mypy
+      fail_fast: true
