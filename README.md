@@ -62,7 +62,7 @@ Also accepts: `SRCINFO`
 - For automating updates `grimaur update`:
    - Pass `--global --download`, download updates without installing `-Syuw`
    - Pass `--global --install`, to be used with command above `-Su`
-- Useful for scripting on top of Grimaur
+- Useful for scripting on top of Grimaur:
    - `--no-color` disables colored terminal output
    - `grimaur search <term> --limit 10` limits results to the first N matches
    - `grimaur search <term> --no-interactive` lists results without prompting to install
@@ -70,7 +70,6 @@ Also accepts: `SRCINFO`
    - `grimaur inspect <pkg> --plain` pacman `-Si` style `Key : Value` output for scripting
    - `grimaur list --aur` lists every AUR package, like yay/paru `-Sl aur`
 - Force `grimaur fetch <package> --force` reclones even if the directory exists
-- Complete example: `python grimaur --use-ssh search "brave.*-bin" --no-interactive`
 
 ### Details
 - Respects `IgnorePkg = x y z` from `/etc/pacman.conf`
