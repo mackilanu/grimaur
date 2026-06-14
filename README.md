@@ -54,17 +54,17 @@ Point at anything else that ships a `PKGBUILD` with `--repo-url`/`--repo` on
    - `{pkg}` (the package name) or `{pkgbase}` (its pkgbase, looked up from the pacman sync DBs)
 
    ```bash
-   grimoire repo --add 'https://github.com/h8d13/VUR/tree/master/pkgs' VUR
+   grimoire repo --add 'github.com/h8d13/VUR/tree/master/pkgs' VUR
    grimoire install <pkg>
    ```
 A bare `search <term>` queries **every** section in `repos.conf` and merges the results.
-so an enabled alias shows up without `--repo`. `search --repo <name>` scope.
+`--repo <name>` searches only this repo.
 
-See [`repos.conf.example`](./repos.conf.example) for ready-made `VUR` and `ARCH` aliases; copy it to `~/.config/grimoire/repos.conf` to start.
+See [`repos.conf.example`](./repos.conf.example) for examples.
 
-The **first (top) section** in `repos.conf` is the default source when you don't pass `--repo`; `--repo <name>` overrides per command.
-On first use grimoire **auto-creates** `~/.config/grimoire/repos.conf` with `[ARCH]` as the default (build official packages from source)
-AUR opt-in (a commented `[AUR]` section with RPC + git-mirror URLs).
+The **first (top) section** in `repos.conf` is checked first:
+On first use, **auto-creates** `~/.config/grimoire/repos.conf` with `[ARCH]` as the default.
+AUR is opt-in (a commented `[AUR]` section with RPC + git-mirror URLs).
 
 ### Stay Updated
 - `grimoire update` rebuilds every installed “foreign” package that has a newer release.

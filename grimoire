@@ -504,34 +504,55 @@ def load_repo_registry() -> dict[str, list[str]]:
 	return registry
 
 
-def write_repo_registry(registry: dict[str, list[str]]) -> None:
-	path = _repo_registry_path()
-	path.parent.mkdir(parents=True, exist_ok=True)
-	blocks = [
-		f"[{name}]\n" + "".join(f"  {url}\n" for url in urls)
-		for name, urls in registry.items()
-	]
-	path.write_text("\n".join(blocks))
+def _repos_section_end(lines: list[str], header_idx: int) -> int:
+	# Index just past the URL lines of the section at header_idx (stops at a blank
+	# line, a comment, or the next [section]).
+	j = header_idx + 1
+	while j < len(lines):
+		s = lines[j].strip()
+		if not s or s.startswith("#") or s.startswith("["):
+			break
+		j += 1
+	return j
 
 
 def add_repo_alias(name: str, url: str) -> None:
-	registry = load_repo_registry()
-	urls = registry.setdefault(name, [])
-	if url in urls:
-		print(f"'{url}' already registered under [{name}]", file=sys.stderr)
-		return
-	urls.append(url)
-	write_repo_registry(registry)
-	print(f"Added '{url}' to [{name}] in {_repo_registry_path()}")
+	# Edit the file textually so comments and commented-out sections survive.
+	path = _repo_registry_path()
+	try:
+		lines = path.read_text().splitlines()
+	except OSError:
+		lines = []
+	header = f"[{name}]"
+	idx = next((i for i, ln in enumerate(lines) if ln.strip() == header), None)
+	if idx is not None:
+		end = _repos_section_end(lines, idx)
+		if any(lines[k].strip() == url for k in range(idx + 1, end)):
+			print(f"'{url}' already registered under [{name}]", file=sys.stderr)
+			return
+		lines.insert(end, f"  {url}")
+	else:
+		if lines and lines[-1].strip():
+			lines.append("")
+		lines += [header, f"  {url}"]
+	path.parent.mkdir(parents=True, exist_ok=True)
+	path.write_text("\n".join(lines) + "\n")
+	print(f"Added '{url}' to [{name}] in {path}")
 
 
 def remove_repo_alias(name: str) -> None:
-	registry = load_repo_registry()
-	if name not in registry:
-		print(f"No alias '{name}' in {_repo_registry_path()}", file=sys.stderr)
+	path = _repo_registry_path()
+	try:
+		lines = path.read_text().splitlines()
+	except OSError:
+		lines = []
+	header = f"[{name}]"
+	idx = next((i for i, ln in enumerate(lines) if ln.strip() == header), None)
+	if idx is None:
+		print(f"No alias '{name}' in {path}", file=sys.stderr)
 		return
-	del registry[name]
-	write_repo_registry(registry)
+	del lines[idx : _repos_section_end(lines, idx)]
+	path.write_text("\n".join(lines) + ("\n" if lines else ""))
 	print(f"Removed alias '{name}'")
 
 

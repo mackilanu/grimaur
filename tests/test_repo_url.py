@@ -477,5 +477,41 @@ class ResolveRepoAliasTargetTests(unittest.TestCase):
 		self.assertEqual(primary_url, "https://example.com/{pkg}.git")
 
 
+class AddRemovePreserveCommentsTests(unittest.TestCase):
+	def setUp(self) -> None:
+		self._tmp = tempfile.mkdtemp()
+		self._orig = os.environ.get("XDG_CONFIG_HOME")
+		os.environ["XDG_CONFIG_HOME"] = self._tmp
+		self.conf = Path(self._tmp) / "grimoire" / "repos.conf"
+		self.conf.parent.mkdir(parents=True)
+		self.conf.write_text(
+			"# header\n[ARCH]\n  https://x/{pkgbase}.git\n\n#[AUR]\n#  https://aur/rpc/\n"
+		)
+
+	def tearDown(self) -> None:
+		if self._orig is None:
+			os.environ.pop("XDG_CONFIG_HOME", None)
+		else:
+			os.environ["XDG_CONFIG_HOME"] = self._orig
+		shutil.rmtree(self._tmp, ignore_errors=True)
+
+	def test_add_keeps_comments_and_commented_section(self) -> None:
+		grimoire.add_repo_alias("VUR", "https://x/vur/pkgs")
+		text = self.conf.read_text()
+		self.assertIn("# header", text)
+		self.assertIn("#[AUR]", text)
+		self.assertEqual(
+			grimoire.load_repo_registry().get("VUR"), ["https://x/vur/pkgs"]
+		)
+
+	def test_remove_keeps_comments(self) -> None:
+		grimoire.add_repo_alias("VUR", "https://x/vur/pkgs")
+		grimoire.remove_repo_alias("VUR")
+		text = self.conf.read_text()
+		self.assertIn("#[AUR]", text)
+		self.assertNotIn("[VUR]", text)
+		self.assertIn("ARCH", grimoire.load_repo_registry())
+
+
 if __name__ == "__main__":
 	unittest.main()
