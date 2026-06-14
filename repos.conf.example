@@ -1,0 +1,17 @@
+# grimaur repo aliases -- example.
+# Copy to $XDG_CONFIG_HOME/grimaur/repos.conf (usually ~/.config/grimaur/repos.conf),
+# then use any of: install / fetch / inspect / search / update <pkg> --repo <NAME>.
+#
+# Each [NAME] is an alias; the indented lines under it are mirror URLs (the first is
+# primary, the rest are fallbacks tried in order). Manage with `grimaur repo --add/--rm/--ls`.
+# In a URL, {pkg} is replaced by the package name and {pkgbase} by its pkgbase
+# (looked up from the local pacman sync DBs, so split packages resolve too).
+
+# A subdir-container repo: one dir per package under pkgs/ (auto-descends to pkgs/<pkg>).
+[VUR]
+  https://github.com/h8d13/VUR/tree/master/pkgs
+
+# Arch official packages, one repo per pkgbase on the Arch GitLab. Builds from source.
+# `search --repo ARCH` lists from the local pacman sync DBs (run `pacman -Sy` to refresh).
+[ARCH]
+  https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git

@@ -331,27 +331,28 @@ def parse_repo_url(url: str) -> tuple[str, str | None, str | None]:
 			sub = sub[:-1]
 		return base, ref, ("/".join(sub) or None)
 
-	# GitHub: /<owner>/<repo>/{tree,blob}/<ref>/<subpath...>
+	# GitHub: /<owner>/<repo>/{tree,blob,raw}/<ref>/<subpath...>
 	if parsed.netloc == "github.com":
-		for marker in ("tree", "blob"):
+		for marker in ("tree", "blob", "raw"):
 			if marker in parts:
 				i = parts.index(marker)
 				if i >= 2 and len(parts) > i + 1:
 					return _rebuild(parts[:i], parts[i + 1], parts[i + 2 :])
-	# GitLab: /<owner>/<repo>/-/{tree,blob}/<ref>/<subpath...>
+	# GitLab: /<owner>/<repo>/-/{tree,blob,raw}/<ref>/<subpath...>
 	if "-" in parts:
 		d = parts.index("-")
-		if d >= 2 and len(parts) > d + 2 and parts[d + 1] in ("tree", "blob"):
+		if d >= 2 and len(parts) > d + 2 and parts[d + 1] in ("tree", "blob", "raw"):
 			return _rebuild(parts[:d], parts[d + 2], parts[d + 3 :])
-	# Gitea/Codeberg: /<owner>/<repo>/src/{branch,tag,commit}/<ref>/<subpath...>
-	if "src" in parts:
-		i = parts.index("src")
-		if (
-			i >= 2
-			and len(parts) > i + 2
-			and parts[i + 1] in ("branch", "tag", "commit")
-		):
-			return _rebuild(parts[:i], parts[i + 2], parts[i + 3 :])
+	# Gitea/Codeberg: /<owner>/<repo>/{src,raw}/{branch,tag,commit}/<ref>/<subpath...>
+	for marker in ("src", "raw"):
+		if marker in parts:
+			i = parts.index(marker)
+			if (
+				i >= 2
+				and len(parts) > i + 2
+				and parts[i + 1] in ("branch", "tag", "commit")
+			):
+				return _rebuild(parts[:i], parts[i + 2], parts[i + 3 :])
 
 	return url, None, None
 

@@ -60,6 +60,8 @@ with `--repo-url`/`--repo` on `install`, `fetch`, `inspect`, `search`, and `upda
    ```
 `search --repo <name>` lists a repo's packages, a package-per-dir subdir, or its branches and falls-back to local DB.
 
+See [`repos.conf.example`](./repos.conf.example) for ready-made `VUR` and `ARCH` aliases; copy it to `~/.config/grimaur/repos.conf` to start.
+
 ### Stay Updated
 - `grimaur update` rebuilds every installed “foreign” package that has a newer release.
    - Pass `--global` to update system first, then AUR packages

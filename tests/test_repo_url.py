@@ -84,6 +84,27 @@ PARSE_CASES = {
 		"a" * 40,
 		"pkg",
 	),
+	# /raw/ links are accepted like tree/blob (same <ref>/<path>)
+	"https://github.com/o/r/raw/master/pkg": (
+		"https://github.com/o/r.git",
+		"master",
+		"pkg",
+	),
+	"https://github.com/o/r/raw/master/pkg/PKGBUILD": (
+		"https://github.com/o/r.git",
+		"master",
+		"pkg",
+	),
+	"https://gitlab.com/o/r/-/raw/main/pkg/PKGBUILD": (
+		"https://gitlab.com/o/r.git",
+		"main",
+		"pkg",
+	),
+	"https://codeberg.org/o/r/raw/branch/dev/aur/bar": (
+		"https://codeberg.org/o/r.git",
+		"dev",
+		"aur/bar",
+	),
 }
 
 # URLs with no recognizable directory marker pass through untouched.
