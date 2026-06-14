@@ -42,12 +42,12 @@ pkgname = brave-bin
 """
 
 
-def fields_dict(fields):
+def fields_dict(fields: list[tuple[str, str]]) -> dict[str, str]:
 	return dict(fields)
 
 
 class PlainSearchFormatTests(unittest.TestCase):
-	def test_two_lines_pacman_shape(self):
+	def test_two_lines_pacman_shape(self) -> None:
 		result = grimaur.SearchResult(
 			name="brave-bin",
 			version="1.81.9-1",
@@ -60,7 +60,7 @@ class PlainSearchFormatTests(unittest.TestCase):
 			["aur/brave-bin 1.81.9-1 [installed]", "    Web browser"],
 		)
 
-	def test_missing_fields_keep_two_line_invariant(self):
+	def test_missing_fields_keep_two_line_invariant(self) -> None:
 		result = grimaur.SearchResult(
 			name="foo", version=None, description=None, installed=False, score=5
 		)
@@ -70,7 +70,7 @@ class PlainSearchFormatTests(unittest.TestCase):
 
 
 class RpcInfoFieldTests(unittest.TestCase):
-	def test_si_style_fields(self):
+	def test_si_style_fields(self) -> None:
 		fields = fields_dict(grimaur.rpc_info_fields(SAMPLE_RPC_INFO))
 		self.assertEqual(fields["Repository"], "aur")
 		self.assertEqual(fields["Version"], "1:1.81.9-1")
@@ -83,14 +83,14 @@ class RpcInfoFieldTests(unittest.TestCase):
 		self.assertEqual(fields["Out-of-date"], "No")
 		self.assertEqual(fields["Last Modified"], "2023-11-14")
 
-	def test_out_of_date_epoch_renders_as_date(self):
+	def test_out_of_date_epoch_renders_as_date(self) -> None:
 		info = dict(SAMPLE_RPC_INFO, OutOfDate=1700000000)
 		fields = fields_dict(grimaur.rpc_info_fields(info))
 		self.assertEqual(fields["Out-of-date"], "2023-11-14")
 
 
 class SrcinfoInfoFieldTests(unittest.TestCase):
-	def test_fields_from_srcinfo(self):
+	def test_fields_from_srcinfo(self) -> None:
 		fields = fields_dict(grimaur.srcinfo_info_fields("brave-bin", SAMPLE_SRCINFO))
 		self.assertEqual(fields["Name"], "brave-bin")
 		self.assertEqual(fields["Version"], "1:1.81.9-1")
@@ -100,7 +100,7 @@ class SrcinfoInfoFieldTests(unittest.TestCase):
 
 
 class ListAurTests(unittest.TestCase):
-	def test_sl_aur_shape(self):
+	def test_sl_aur_shape(self) -> None:
 		out = io.StringIO()
 		with (
 			unittest.mock.patch.object(
@@ -117,7 +117,7 @@ class ListAurTests(unittest.TestCase):
 			"aur foo unknown-version\naur bar unknown-version [installed]\n",
 		)
 
-	def test_empty_name_list_is_an_error(self):
+	def test_empty_name_list_is_an_error(self) -> None:
 		with (
 			unittest.mock.patch.object(grimaur, "aur_package_names", return_value=[]),
 			self.assertRaises(grimaur.AurGitError),
@@ -126,7 +126,7 @@ class ListAurTests(unittest.TestCase):
 
 
 class PrintInfoFieldsTests(unittest.TestCase):
-	def test_colon_alignment(self):
+	def test_colon_alignment(self) -> None:
 		out = io.StringIO()
 		with contextlib.redirect_stdout(out):
 			grimaur.print_info_fields([("Name", "foo"), ("Depends On", "bar")])

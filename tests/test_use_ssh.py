@@ -34,13 +34,13 @@ EXPECTED = {
 
 
 class SSHRewriteTests(unittest.TestCase):
-	def test_fixture_covers_every_rewrite_host(self):
+	def test_fixture_covers_every_rewrite_host(self) -> None:
 		urls = _source_urls(FIXTURE)
 		hosts = {url.split("/")[2] for url in urls}
 		for host in grimaur.SSH_REWRITE_HOSTS:
 			self.assertIn(host, hosts, f"fixture missing source for {host}")
 
-	def test_per_url_python_rewrite(self):
+	def test_per_url_python_rewrite(self) -> None:
 		# grimaur's own outer-clone rewrite what _maybe_ssh_rewrite produces.
 		for url in _source_urls(FIXTURE):
 			with self.subTest(url=url):
@@ -56,7 +56,7 @@ class SSHRewriteTests(unittest.TestCase):
 			**grimaur._ssh_rewrite_git_env(),
 		}
 
-	def test_env_vars_register_insteadof_in_git(self):
+	def test_env_vars_register_insteadof_in_git(self) -> None:
 		# The propagation path: env vars must register as live git config in any
 		# child git process — which is what makepkg invokes on each source=().
 		result = subprocess.run(
@@ -71,7 +71,7 @@ class SSHRewriteTests(unittest.TestCase):
 			expected = f"url.ssh://{user}@{host}/.insteadof=https://{host}/"
 			self.assertIn(expected, out, f"missing insteadOf rule for {host}")
 
-	def test_git_actually_rewrites_with_env(self):
+	def test_git_actually_rewrites_with_env(self) -> None:
 		# End-to-end: ask git to resolve a URL via the env-injected insteadOf.
 		# `git ls-remote --get-url` echoes the post-rewrite URL without networking.
 		for url, expected in EXPECTED.items():

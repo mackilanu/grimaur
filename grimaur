@@ -205,13 +205,9 @@ def _maybe_ssh_rewrite(url: str) -> str:
 
 
 def parse_repo_url(url: str) -> tuple[str, str | None, str | None]:
-	"""Split a forge directory-view URL into (clone_url, ref, subdir).
-
-	Recognizes GitHub/GitLab/Gitea(Codeberg) "tree"/"src" URLs so --repo-url can
-	point straight at a subdirectory of a repo. A plain clone URL passes through
-	unchanged (ref/subdir None). The ref is assumed to be a single path segment;
-	for branches containing slashes, pass --branch/--subdir explicitly to override.
-	"""
+	# Expand a forge directory/file URL to (clone_url, ref, subdir) so --repo-url can
+	# target a subdir. ref is taken as one path segment, so slash-branches need an
+	# explicit --branch/--subdir. Non-forge URLs fall through unchanged.
 	parsed = urllib.parse.urlparse(url)
 	if parsed.scheme not in ("http", "https"):
 		return url, None, None
@@ -223,17 +219,22 @@ def parse_repo_url(url: str) -> tuple[str, str | None, str | None]:
 		base = f"{parsed.scheme}://{parsed.netloc}/" + "/".join(repo_parts)
 		if not base.endswith(".git"):
 			base += ".git"
+		# A blob link usually points at the PKGBUILD itself; build in its dir.
+		if sub and sub[-1] in ("PKGBUILD", ".SRCINFO"):
+			sub = sub[:-1]
 		return base, ref, ("/".join(sub) or None)
 
-	# GitHub: /<owner>/<repo>/tree/<ref>/<subpath...>
-	if parsed.netloc == "github.com" and "tree" in parts:
-		i = parts.index("tree")
-		if i >= 2 and len(parts) > i + 1:
-			return _rebuild(parts[:i], parts[i + 1], parts[i + 2 :])
-	# GitLab: /<owner>/<repo>/-/tree/<ref>/<subpath...>
+	# GitHub: /<owner>/<repo>/{tree,blob}/<ref>/<subpath...>
+	if parsed.netloc == "github.com":
+		for marker in ("tree", "blob"):
+			if marker in parts:
+				i = parts.index(marker)
+				if i >= 2 and len(parts) > i + 1:
+					return _rebuild(parts[:i], parts[i + 1], parts[i + 2 :])
+	# GitLab: /<owner>/<repo>/-/{tree,blob}/<ref>/<subpath...>
 	if "-" in parts:
 		d = parts.index("-")
-		if d >= 2 and len(parts) > d + 2 and parts[d + 1] == "tree":
+		if d >= 2 and len(parts) > d + 2 and parts[d + 1] in ("tree", "blob"):
 			return _rebuild(parts[:d], parts[d + 2], parts[d + 3 :])
 	# Gitea/Codeberg: /<owner>/<repo>/src/{branch,tag,commit}/<ref>/<subpath...>
 	if "src" in parts:
@@ -2579,16 +2580,13 @@ def build_parser() -> argparse.ArgumentParser:
 def _resolve_repo_target(
 	args: argparse.Namespace,
 ) -> tuple[str | None, str | None, str | None]:
-	"""Resolve (repo_url, branch, subdir) from args, expanding forge tree URLs.
-
-	Explicit --branch/--subdir override anything parsed out of a tree URL.
-	"""
 	repo_url = getattr(args, "repo_url", None)
 	branch = getattr(args, "branch", None)
 	subdir = getattr(args, "subdir", None)
 	if repo_url:
 		clone_url, parsed_branch, parsed_subdir = parse_repo_url(repo_url)
 		repo_url = clone_url
+		# Explicit flags win over whatever the URL encoded.
 		branch = branch or parsed_branch
 		subdir = subdir or parsed_subdir
 	return repo_url, branch, subdir

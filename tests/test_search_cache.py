@@ -15,7 +15,7 @@ from unittest import mock
 from grimaurshim import grimaur
 
 
-def _search_cache_key(pattern):
+def _search_cache_key(pattern: str) -> str:
 	query = urllib.parse.urlencode(
 		{"v": "5", "type": "search", "arg": pattern}, doseq=True
 	)
@@ -23,32 +23,32 @@ def _search_cache_key(pattern):
 
 
 class CacheHelperTests(unittest.TestCase):
-	def setUp(self):
+	def setUp(self) -> None:
 		tmp = tempfile.TemporaryDirectory()
 		self.addCleanup(tmp.cleanup)
 		patcher = mock.patch.object(grimaur, "CACHE_DIR", Path(tmp.name))
 		patcher.start()
 		self.addCleanup(patcher.stop)
 
-	def test_roundtrip(self):
+	def test_roundtrip(self) -> None:
 		grimaur.cache_put("search/abc.json", '{"ok": 1}')
 		self.assertEqual(grimaur.cache_get("search/abc.json", ttl=60), '{"ok": 1}')
 
-	def test_miss_when_absent(self):
+	def test_miss_when_absent(self) -> None:
 		self.assertIsNone(grimaur.cache_get("nope.json", ttl=60))
 
-	def test_disabled_when_cache_dir_unset(self):
+	def test_disabled_when_cache_dir_unset(self) -> None:
 		with mock.patch.object(grimaur, "CACHE_DIR", None):
 			grimaur.cache_put("search/abc.json", '{"ok": 1}')
 			self.assertIsNone(grimaur.cache_get("search/abc.json", ttl=60))
 
-	def test_miss_when_expired(self):
+	def test_miss_when_expired(self) -> None:
 		grimaur.cache_put("packages.list", "foo\nbar")
 		stale = time.time() - 120
 		os.utime(grimaur.CACHE_DIR / "packages.list", (stale, stale))
 		self.assertIsNone(grimaur.cache_get("packages.list", ttl=60))
 
-	def test_clear_search_cache_removes_dir(self):
+	def test_clear_search_cache_removes_dir(self) -> None:
 		# subdir, so the enclosing TemporaryDirectory survives the rmtree
 		sub = grimaur.CACHE_DIR / ".searchcache"
 		with mock.patch.object(grimaur, "CACHE_DIR", sub):
@@ -58,7 +58,7 @@ class CacheHelperTests(unittest.TestCase):
 			# idempotent when already gone
 			grimaur.clear_search_cache()
 
-	def test_expired_entry_is_pruned(self):
+	def test_expired_entry_is_pruned(self) -> None:
 		grimaur.cache_put("packages.list", "foo\nbar")
 		path = grimaur.CACHE_DIR / "packages.list"
 		stale = time.time() - 120
@@ -68,14 +68,14 @@ class CacheHelperTests(unittest.TestCase):
 
 
 class CachedJsonTests(unittest.TestCase):
-	def setUp(self):
+	def setUp(self) -> None:
 		tmp = tempfile.TemporaryDirectory()
 		self.addCleanup(tmp.cleanup)
 		patcher = mock.patch.object(grimaur, "CACHE_DIR", Path(tmp.name))
 		patcher.start()
 		self.addCleanup(patcher.stop)
 
-	def test_fetches_once_then_serves_from_disk(self):
+	def test_fetches_once_then_serves_from_disk(self) -> None:
 		fetch = mock.Mock(return_value=["foo", "bar"])
 		first = grimaur.cached_json("packages.json", 60, fetch)
 		second = grimaur.cached_json("packages.json", 60, fetch)
@@ -83,19 +83,19 @@ class CachedJsonTests(unittest.TestCase):
 		self.assertEqual(second, ["foo", "bar"])
 		fetch.assert_called_once()
 
-	def test_none_result_is_not_cached(self):
+	def test_none_result_is_not_cached(self) -> None:
 		fetch = mock.Mock(return_value=None)
 		self.assertIsNone(grimaur.cached_json("srcinfo/x.json", 60, fetch))
 		self.assertIsNone(grimaur.cached_json("srcinfo/x.json", 60, fetch))
 		self.assertEqual(fetch.call_count, 2)
 
-	def test_corrupt_entry_refetches(self):
+	def test_corrupt_entry_refetches(self) -> None:
 		grimaur.cache_put("k.json", "{not json")
 		fetch = mock.Mock(return_value={"ok": 1})
 		self.assertEqual(grimaur.cached_json("k.json", 60, fetch), {"ok": 1})
 		fetch.assert_called_once()
 
-	def test_zero_ttl_refetches_and_repopulates(self):
+	def test_zero_ttl_refetches_and_repopulates(self) -> None:
 		# --refresh sets CACHE_TTL=0: every read expires, writes still land
 		grimaur.cache_put("k.json", '{"stale": 1}')
 		stale = time.time() - 1
@@ -109,14 +109,14 @@ class CachedJsonTests(unittest.TestCase):
 
 
 class RpcSearchCacheTests(unittest.TestCase):
-	def setUp(self):
+	def setUp(self) -> None:
 		tmp = tempfile.TemporaryDirectory()
 		self.addCleanup(tmp.cleanup)
 		patcher = mock.patch.object(grimaur, "CACHE_DIR", Path(tmp.name))
 		patcher.start()
 		self.addCleanup(patcher.stop)
 
-	def test_served_from_cache_without_network(self):
+	def test_served_from_cache_without_network(self) -> None:
 		grimaur.cache_put(
 			_search_cache_key("foo"),
 			json.dumps({"type": "search", "results": [{"Name": "foo"}]}),
@@ -128,7 +128,7 @@ class RpcSearchCacheTests(unittest.TestCase):
 		self.assertEqual([entry["Name"] for entry in results], ["foo"])
 		urlopen.assert_not_called()
 
-	def test_corrupt_cache_falls_through_to_network(self):
+	def test_corrupt_cache_falls_through_to_network(self) -> None:
 		grimaur.cache_put(_search_cache_key("foo"), "{not json")
 		with mock.patch.object(
 			grimaur.urllib.request,
@@ -141,7 +141,7 @@ class RpcSearchCacheTests(unittest.TestCase):
 
 
 class NameSourceSelectionTests(unittest.TestCase):
-	def test_gz_primary_skips_git(self):
+	def test_gz_primary_skips_git(self) -> None:
 		with (
 			mock.patch.object(grimaur, "_fetch_names_gz", return_value=["foo"]) as gz,
 			mock.patch.object(grimaur, "_fetch_names_git") as git,
@@ -150,7 +150,7 @@ class NameSourceSelectionTests(unittest.TestCase):
 		gz.assert_called_once()
 		git.assert_not_called()
 
-	def test_gz_failure_falls_back_to_git(self):
+	def test_gz_failure_falls_back_to_git(self) -> None:
 		stderr = io.StringIO()
 		with (
 			mock.patch.object(grimaur, "_fetch_names_gz", return_value=None),
@@ -161,7 +161,7 @@ class NameSourceSelectionTests(unittest.TestCase):
 		git.assert_called_once()
 		self.assertIn("git mirror", stderr.getvalue())
 
-	def test_force_git_mirror_skips_gz(self):
+	def test_force_git_mirror_skips_gz(self) -> None:
 		with (
 			mock.patch.object(grimaur, "FORCE_GIT_MIRROR", True),
 			mock.patch.object(grimaur, "_fetch_names_gz") as gz,
@@ -170,7 +170,7 @@ class NameSourceSelectionTests(unittest.TestCase):
 			self.assertEqual(grimaur._fetch_aur_package_names(), ["baz"])
 		gz.assert_not_called()
 
-	def test_fresh_names_write_completion_cache(self):
+	def test_fresh_names_write_completion_cache(self) -> None:
 		tmp = tempfile.TemporaryDirectory()
 		self.addCleanup(tmp.cleanup)
 		# completion.cache lands in dest_root, sibling of .searchcache
@@ -183,7 +183,7 @@ class NameSourceSelectionTests(unittest.TestCase):
 			(Path(tmp.name) / "completion.cache").read_text(), "foo\nbar\n"
 		)
 
-	def test_forced_rpc_raises_instead_of_git_fallback(self):
+	def test_forced_rpc_raises_instead_of_git_fallback(self) -> None:
 		with (
 			mock.patch.object(grimaur, "FORCE_AUR_RPC", True),
 			mock.patch.object(grimaur, "_fetch_names_gz", return_value=None),
@@ -195,7 +195,7 @@ class NameSourceSelectionTests(unittest.TestCase):
 
 
 class GitSearchCacheTests(unittest.TestCase):
-	def setUp(self):
+	def setUp(self) -> None:
 		tmp = tempfile.TemporaryDirectory()
 		self.addCleanup(tmp.cleanup)
 		self.cache_dir = Path(tmp.name)
@@ -210,16 +210,16 @@ class GitSearchCacheTests(unittest.TestCase):
 			patcher.start()
 			self.addCleanup(patcher.stop)
 
-	def test_empty_mirror_output_is_not_cached(self):
+	def test_empty_mirror_output_is_not_cached(self) -> None:
 		with mock.patch.object(grimaur, "run_command", return_value=""):
 			results = grimaur.search_packages_git(regex=None, needle="foo", limit=None)
 		self.assertEqual(results, [])
 		self.assertFalse((self.cache_dir / "packages.json").exists())
 
-	def test_metadata_failure_drops_entry_without_killing_search(self):
+	def test_metadata_failure_drops_entry_without_killing_search(self) -> None:
 		ls_remote = "abc123\trefs/heads/foopkg\ndef456\trefs/heads/foolib\n"
 
-		def srcinfo(package):
+		def srcinfo(package: str) -> tuple[str, str]:
 			if package == "foopkg":
 				raise grimaur.AurGitError("boom")
 			return ("1.0", "desc")

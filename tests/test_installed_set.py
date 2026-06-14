@@ -7,16 +7,16 @@ from grimaurshim import grimaur
 
 
 class DbPathParseTests(unittest.TestCase):
-	def test_matches_dbpath_line(self):
+	def test_matches_dbpath_line(self) -> None:
 		match = grimaur._PACMAN_DBPATH_RE.match("DBPath      = /custom/db/")
 		self.assertEqual(match.group(1), "/custom/db/")
 
-	def test_ignores_commented_dbpath(self):
+	def test_ignores_commented_dbpath(self) -> None:
 		self.assertIsNone(grimaur._PACMAN_DBPATH_RE.match("#DBPath = /var/lib/pacman/"))
 
 
 class ListLocalDbPackagesTests(unittest.TestCase):
-	def setUp(self):
+	def setUp(self) -> None:
 		tmp = tempfile.TemporaryDirectory()
 		self.addCleanup(tmp.cleanup)
 		self.db_root = Path(tmp.name)
@@ -27,16 +27,16 @@ class ListLocalDbPackagesTests(unittest.TestCase):
 		patcher.start()
 		self.addCleanup(patcher.stop)
 
-	def test_parses_entries_and_skips_sentinel(self):
+	def test_parses_entries_and_skips_sentinel(self) -> None:
 		for entry in ("firefox-128.0-1", "lib32-glibc-2.39-2", "ALPM_DB_VERSION"):
 			(self.db_root / "local" / entry).mkdir()
 		self.assertEqual(grimaur._list_local_db_packages(), {"firefox", "lib32-glibc"})
 
-	def test_returns_none_when_dir_missing(self):
+	def test_returns_none_when_dir_missing(self) -> None:
 		(self.db_root / "local").rmdir()
 		self.assertIsNone(grimaur._list_local_db_packages())
 
-	def test_returns_none_when_empty(self):
+	def test_returns_none_when_empty(self) -> None:
 		self.assertIsNone(grimaur._list_local_db_packages())
 
 
