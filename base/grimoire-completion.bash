@@ -10,10 +10,10 @@ _grimoire_completion()
         cur="${COMP_WORDS[COMP_CWORD]}"
         prev="${COMP_WORDS[COMP_CWORD-1]}"
     fi
-    
+
     # Global options (can appear anywhere before subcommand)
-    local global_opts="--dest-root --refresh --no-color --aur-rpc --git-mirror --use-ssh --shallow --version"
-    
+    local global_opts="--dest-root --refresh --no-color --aur-rpc --git-mirror --use-ssh --shallow -v --version"
+
     # Find the subcommand (first non-option word after potential global options)
     local subcmd=""
     local subcmd_idx=0
@@ -24,68 +24,71 @@ _grimoire_completion()
             break
         fi
     done
-    
+
     # Handle --dest-root value completion (directory path)
     if [[ "$prev" == "--dest-root" ]]; then
         mapfile -t COMPREPLY < <(compgen -d -- "$cur")
         return 0
     fi
-    
+
     # If current word starts with -, complete options
     if [[ "$cur" == -* ]]; then
         local opts="$global_opts"
-        
+
         case "$subcmd" in
             fetch)
-                opts="$global_opts --force --repo-url"
+                opts="$global_opts --force --repo-url --repo --subdir --branch"
                 ;;
             install)
-                opts="$global_opts --noconfirm --repo-url"
+                opts="$global_opts --noconfirm --repo-url --repo --subdir --branch"
                 ;;
             remove)
                 opts="$global_opts --noconfirm --clone --cache"
                 ;;
             update)
-                opts="$global_opts --noconfirm --devel --global --system-only --index --download --install"
+                opts="$global_opts --noconfirm --devel --repo-url --repo --subdir --branch --global --system-only --index --download --install"
                 ;;
             search)
-                opts="$global_opts --limit --no-interactive --noconfirm --plain"
+                opts="$global_opts --limit --no-interactive --noconfirm --plain --repo-url --repo --subdir --branch"
                 ;;
             inspect)
-                opts="$global_opts --target --full --repo-url --plain"
+                opts="$global_opts --target --full --repo-url --repo --subdir --branch --plain"
                 ;;
             list)
                 opts="$global_opts --aur"
+                ;;
+            repo)
+                opts="$global_opts --add --rm --ls"
                 ;;
             "")
                 # No subcommand yet, only show global options
                 opts="$global_opts"
                 ;;
         esac
-        
+
         mapfile -t COMPREPLY < <(compgen -W "$opts" -- "$cur")
         return 0
     fi
-    
+
     # Handle --target value completion for inspect
     if [[ "$prev" == "--target" ]] && [[ "$subcmd" == "inspect" ]]; then
         mapfile -t COMPREPLY < <(compgen -W "info PKGBUILD SRCINFO" -- "$cur")
         return 0
     fi
-    
+
     # Handle --limit value completion (just suggest some numbers)
     if [[ "$prev" == "--limit" ]]; then
         mapfile -t COMPREPLY < <(compgen -W "10 20 50 100" -- "$cur")
         return 0
     fi
-    
+
     # If no subcommand yet, complete subcommands
     if [[ -z "$subcmd" ]]; then
-        local subcmds="fetch install remove update search inspect list"
+        local subcmds="fetch install remove update search inspect list repo"
         mapfile -t COMPREPLY < <(compgen -W "$subcmds" -- "$cur")
         return 0
     fi
-    
+
     # Complete package names based on subcommand
     case "$subcmd" in
         remove|update)
@@ -105,7 +108,7 @@ _grimoire_completion()
             fi
             ;;
         *)
-            # list: no positional completion
+            # list, repo: no positional completion
             ;;
     esac
 }

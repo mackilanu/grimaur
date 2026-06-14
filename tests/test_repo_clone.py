@@ -358,5 +358,76 @@ class SearchRepoTests(unittest.TestCase):
 		)
 
 
+class CloneAnySourceTests(unittest.TestCase):
+	"""Cross-section fallback chain: try sources in order, first that clones a
+	PKGBUILD wins; clone failures and PKGBUILD-less containers are skipped."""
+
+	def setUp(self) -> None:
+		tmp = tempfile.TemporaryDirectory()
+		self.addCleanup(tmp.cleanup)
+		self.root = Path(tmp.name)
+		self.dest = self.root / "dest"
+		# `has`: foo's PKGBUILD at root. `lacks`: a git repo without it (container
+		# miss). `bad`: a URL that never clones.
+		self.has = self.root / "has"
+		self.lacks = self.root / "lacks"
+		for repo, files in (
+			(self.has, {"PKGBUILD": "pkgname=foo\npkgver=1\n"}),
+			(self.lacks, {"README": "no pkgbuild here\n"}),
+		):
+			repo.mkdir()
+			_git(repo, "init", "-q", "-b", "master")
+			for name, body in files.items():
+				(repo / name).write_text(body)
+			_git(repo, "add", "-A")
+			_git(repo, "commit", "-qm", "x")
+		self.bad = "file:///definitely/not/here.git"
+		for name in ("SHALLOW_CLONE", "USE_SSH", "USE_AUR_RPC"):
+			patcher = mock.patch.object(grimoire, name, False)
+			patcher.start()
+			self.addCleanup(patcher.stop)
+
+	def _src(self, url: str) -> tuple[str, None, None, list]:
+		return (url, None, None, [])
+
+	def test_first_with_pkgbuild_wins(self) -> None:
+		pkg_dir = grimoire._clone_any_source(
+			"foo",
+			self.dest,
+			[self._src(f"file://{self.has}"), self._src(self.bad)],
+			refresh=False,
+		)
+		self.assertTrue((pkg_dir / "PKGBUILD").is_file())
+
+	def test_clone_failure_falls_through(self) -> None:
+		pkg_dir = grimoire._clone_any_source(
+			"foo",
+			self.dest,
+			[self._src(self.bad), self._src(f"file://{self.has}")],
+			refresh=False,
+		)
+		self.assertTrue((pkg_dir / "PKGBUILD").is_file())
+
+	def test_pkgbuildless_container_falls_through(self) -> None:
+		# A source that clones but lacks the package is skipped for the next source.
+		pkg_dir = grimoire._clone_any_source(
+			"foo",
+			self.dest,
+			[self._src(f"file://{self.lacks}"), self._src(f"file://{self.has}")],
+			refresh=False,
+		)
+		self.assertTrue((pkg_dir / "PKGBUILD").is_file())
+
+	def test_all_sources_fail_raises(self) -> None:
+		with self.assertRaises(grimoire.AurGitError) as ctx:
+			grimoire._clone_any_source(
+				"foo",
+				self.dest,
+				[self._src(self.bad), self._src("file:///also/missing.git")],
+				refresh=False,
+			)
+		self.assertIn("not found in any configured source", str(ctx.exception))
+
+
 if __name__ == "__main__":
 	unittest.main()

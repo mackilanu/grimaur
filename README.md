@@ -4,8 +4,10 @@
 <img align="left" src="./base/assets/grimoire_l.svg#gh-dark-mode-only" width="80" alt="grimoire logo">
 
 `grimoire` is a lightweight package builder for Arch. It searches, builds, and updates packages
-because it just drives `makepkg`, it can build any `PKGBUILD` from any git source you point it at.
+because it drives `git` & `makepkg`, it can build `PKGBUILD`s from **any git source you point it at.**
+
 <br clear="left">
+
 ## Install
 
 ### Deps
@@ -27,6 +29,7 @@ Even see it directly: `python grimoire inspect brave-bin --target PKGBUILD`
 Also accepts: `SRCINFO`
 
 ## Usage
+
 ### Search Packages
 - `grimoire <term>` (or `grimoire search <term>`) lists matching packages.
    - Regex `"pattern-*"` automatically uses git mirror
@@ -34,6 +37,8 @@ Also accepts: `SRCINFO`
 - `grimoire list` to see installed "foreign" packages recognized by pacman -Qm
 
 ### Inspect & Install & Remove Packages
+
+`inspect`, `install`, `fetch`, and `remove` accept one or more packages (`grimoire install a b c`).
 
 - `grimoire inspect <package> --full` Shows full depends
 - `grimoire install <package>` clones the repo, resolves dependencies, builds with `makepkg`
@@ -44,7 +49,9 @@ Also accepts: `SRCINFO`
    - `grimoire remove --cache` drops the search result cache
 
 ### Build from other sources
-The default source is the top section of `repos.conf` (auto-seeded to `[ARCH]`; see below).
+
+With no `--repo`, sources are tried in `repos.conf` order (top first); the first that has
+the package wins, the rest are fallbacks. `repos.conf` is auto-seeded to `[ARCH]` (see below).
 Point at anything else that ships a `PKGBUILD` with `--repo-url`/`--repo` on
 `install`, `fetch`, `inspect`, `search`, and `update`:
    - `--repo-url <url>` builds from a git URL (scheme optional: `provider.ext/u/r` works).
@@ -62,11 +69,14 @@ A bare `search <term>` queries **every** section in `repos.conf` and merges the 
 
 See [`repos.conf.example`](./repos.conf.example) for examples.
 
-The **first (top) section** in `repos.conf` is checked first:
-On first use, **auto-creates** `~/.config/grimoire/repos.conf` with `[ARCH]` as the default.
-AUR is opt-in (a commented `[AUR]` section with RPC + git-mirror URLs).
+Section order is precedence: `install`/`fetch`/`inspect`/`update` walk sections top to
+bottom and build from the first that has the package. On first use, **auto-creates**
+`~/.config/grimoire/repos.conf` with `[ARCH]` as the default. AUR is opt-in (a commented
+`[AUR]` section with RPC + git-mirror URLs); enable it (or move it on top) to have AUR
+packages resolve, including for a bare `update`.
 
 ### Stay Updated
+
 - `grimoire update` rebuilds every installed “foreign” package that has a newer release.
    - Pass `--global` to update system first, then AUR packages
    - Pass `--global --system-only` for equivalent of `-Syu`
@@ -96,3 +106,11 @@ AUR is opt-in (a commented `[AUR]` section with RPC + git-mirror URLs).
 - Completions are also [available](./base/) and have cached search complete.
 
 ---
+
+<div align="center">
+
+Made with ♡
+
+[Star this repo](https://github.com/mackilanu/grimoire) · [Bugs/Features](https://github.com/mackilanu/grimaur/issues/new) · [Discussions](https://github.com/mackilanu/grimoire/discussions)
+
+</div>

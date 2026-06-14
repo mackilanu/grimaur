@@ -1,7 +1,7 @@
 # Fish completion for grimoire helper
 # Place in ~/.config/fish/completions/ or /usr/share/fish/vendor_completions.d/
 
-set -l commands fetch install remove update search inspect list
+set -l commands fetch install remove update search inspect list repo
 
 # Complete AUR names from the cache grimoire writes alongside packages.json;
 # seed it in the background on first use.
@@ -32,6 +32,7 @@ complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a update -d
 complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a search -d 'Search packages via the configured backend'
 complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a inspect -d 'Show PKGBUILD or dependency information'
 complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a list -d 'List installed foreign (AUR) packages'
+complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a repo -d 'Manage repo URL aliases in repos.conf'
 
 # Global flags (valid before or after the subcommand)
 complete -c grimoire -l dest-root -x -a "(__fish_complete_directories (commandline -ct))" -d 'Directory to store cloned packages'
@@ -41,16 +42,25 @@ complete -c grimoire -l aur-rpc -d 'Force AUR RPC; no git-mirror fallback'
 complete -c grimoire -l git-mirror -d 'Use git mirror instead of AUR RPC'
 complete -c grimoire -l use-ssh -d 'Use SSH instead of HTTPS for git operations'
 complete -c grimoire -l shallow -d 'Use shallow clones (--depth=1)'
-complete -c grimoire -l version -d 'Show version'
+complete -c grimoire -s v -l version -d 'Show version'
+
+# Source selection (fetch / install / update / search / inspect)
+complete -c grimoire -n '__fish_seen_subcommand_from fetch install update search inspect' -l repo-url -x -d 'Clone from custom Git URL'
+complete -c grimoire -n '__fish_seen_subcommand_from fetch install update search inspect' -l repo -x -d 'Use a registered repo alias as the mirror list'
+complete -c grimoire -n '__fish_seen_subcommand_from fetch install update search inspect' -l subdir -x -d 'Build from this subdirectory of the repo'
+complete -c grimoire -n '__fish_seen_subcommand_from fetch install update search inspect' -l branch -x -d 'Git branch, tag, or ref to check out'
+
+# --noconfirm (install / remove / update / search)
+complete -c grimoire -n '__fish_seen_subcommand_from install remove update search' -l noconfirm -d 'Skip confirmation prompts'
 
 # fetch
 complete -c grimoire -n '__fish_seen_subcommand_from fetch' -l force -d 'Reclone even if directory exists'
-complete -c grimoire -n '__fish_seen_subcommand_from fetch install inspect' -l repo-url -x -d 'Clone from custom Git URL'
 
-# install / remove / update / search
-complete -c grimoire -n '__fish_seen_subcommand_from install remove update search' -l noconfirm -d 'Skip confirmation prompts'
+# remove
 complete -c grimoire -n '__fish_seen_subcommand_from remove' -l clone -d "Also remove the package's clone"
 complete -c grimoire -n '__fish_seen_subcommand_from remove' -l cache -d 'Remove the search result cache'
+
+# update
 complete -c grimoire -n '__fish_seen_subcommand_from update' -l devel -d 'Include VCS/devel packages'
 complete -c grimoire -n '__fish_seen_subcommand_from update' -l global -d 'Update official repositories first'
 complete -c grimoire -n '__fish_seen_subcommand_from update' -l system-only -d 'With --global, skip AUR updates'
@@ -69,6 +79,11 @@ complete -c grimoire -n '__fish_seen_subcommand_from inspect' -l full -d 'Includ
 
 # list
 complete -c grimoire -n '__fish_seen_subcommand_from list' -l aur -d 'List every AUR package (like -Sl aur)'
+
+# repo
+complete -c grimoire -n '__fish_seen_subcommand_from repo' -l add -x -d 'Register URL as a mirror under alias NAME'
+complete -c grimoire -n '__fish_seen_subcommand_from repo' -l rm -x -d 'Remove alias NAME from the registry'
+complete -c grimoire -n '__fish_seen_subcommand_from repo' -l ls -d 'List registered aliases and their mirror URLs'
 
 # Package positionals
 complete -c grimoire -n '__fish_seen_subcommand_from install fetch inspect search' -a '(__grimoire_aur_packages)'

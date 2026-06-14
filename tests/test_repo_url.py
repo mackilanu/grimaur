@@ -227,13 +227,25 @@ class ResolvePackageDirTests(unittest.TestCase):
 		)
 
 
-class InSyncDbTests(unittest.TestCase):
-	def test_true_when_package_in_a_sync_repo(self) -> None:
-		fake = (("vscodium", "1", "d", "cachyos"), ("bash", "5", "d", "core"))
-		with mock.patch.object(grimoire, "_sync_db_packages", return_value=fake):
-			self.assertTrue(grimoire._in_sync_db("vscodium"))
-			self.assertTrue(grimoire._in_sync_db("bash"))
-			self.assertFalse(grimoire._in_sync_db("not-here"))
+class OfficialRepoRegexTests(unittest.TestCase):
+	def test_matches_official_repos(self) -> None:
+		for repo in (
+			"core",
+			"extra",
+			"multilib",
+			"core-testing",
+			"extra-staging",
+			"multilib-testing",
+			"gnome-unstable",
+			"kde-unstable",
+		):
+			with self.subTest(repo=repo):
+				self.assertTrue(grimoire._OFFICIAL_REPO_RE.match(repo))
+
+	def test_rejects_third_party_repos(self) -> None:
+		for repo in ("cachyos", "cachyos-v3", "myrepo", "core-extra", "aur"):
+			with self.subTest(repo=repo):
+				self.assertIsNone(grimoire._OFFICIAL_REPO_RE.match(repo))
 
 
 class ResolvePkgbaseTests(unittest.TestCase):
@@ -408,6 +420,79 @@ class DefaultRepoTests(unittest.TestCase):
 		self._write("[VUR]\n  https://x/v\n")
 		grimoire._ensure_repos_conf()
 		self.assertEqual(self.conf.read_text(), "[VUR]\n  https://x/v\n")
+
+
+class ResolveSourcesTests(unittest.TestCase):
+	"""Ordered source chain: explicit flag collapses to one source, otherwise every
+	repos.conf section top to bottom (conf order == precedence), AUR encoded as a
+	None repo_url, templates resolved per package."""
+
+	def setUp(self) -> None:
+		self._tmp = tempfile.mkdtemp()
+		self._orig = os.environ.get("XDG_CONFIG_HOME")
+		os.environ["XDG_CONFIG_HOME"] = self._tmp
+		self.conf = Path(self._tmp) / "grimoire" / "repos.conf"
+
+	def tearDown(self) -> None:
+		if self._orig is None:
+			os.environ.pop("XDG_CONFIG_HOME", None)
+		else:
+			os.environ["XDG_CONFIG_HOME"] = self._orig
+		shutil.rmtree(self._tmp, ignore_errors=True)
+
+	def _write(self, text: str) -> None:
+		self.conf.parent.mkdir(parents=True, exist_ok=True)
+		self.conf.write_text(text)
+
+	def _args(self, **kw: object) -> argparse.Namespace:
+		base: dict[str, object] = {
+			"repo": None,
+			"repo_url": None,
+			"branch": None,
+			"subdir": None,
+		}
+		base.update(kw)
+		return argparse.Namespace(**base)
+
+	def test_explicit_url_is_single_source(self) -> None:
+		self._write("[ARCH]\n  https://gitlab/x/{pkg}.git\n\n[VUR]\n  https://x/v\n")
+		sources = grimoire._resolve_sources(
+			self._args(repo_url="https://github.com/o/r.git"), "bash"
+		)
+		self.assertEqual(sources, [("https://github.com/o/r.git", None, None, [])])
+
+	def test_no_conf_is_single_aur_backend(self) -> None:
+		self.assertEqual(
+			grimoire._resolve_sources(self._args(), "bash"),
+			[(None, None, None, [])],
+		)
+
+	def test_chain_follows_conf_order(self) -> None:
+		self._write(
+			"[ARCH]\n  https://gitlab/x/{pkg}.git\n\n[VUR]\n  https://x/vur.git\n"
+		)
+		sources = grimoire._resolve_sources(self._args(), "bash")
+		self.assertEqual(
+			[s[0] for s in sources],
+			["https://gitlab/x/bash.git", "https://x/vur.git"],
+		)
+
+	def test_aur_section_becomes_backend_marker_in_order(self) -> None:
+		self._write("[AUR]\n  https://aur/rpc/\n\n[VUR]\n  https://x/vur.git\n")
+		sources = grimoire._resolve_sources(self._args(), "bash")
+		self.assertEqual(sources[0], (None, None, None, []))
+		self.assertEqual(sources[1][0], "https://x/vur.git")
+
+	def test_template_resolved_per_package(self) -> None:
+		self._write("[ARCH]\n  https://gitlab/x/{pkg}.git\n")
+		self.assertEqual(
+			grimoire._resolve_sources(self._args(), "foo")[0][0],
+			"https://gitlab/x/foo.git",
+		)
+		self.assertEqual(
+			grimoire._resolve_sources(self._args(), "bar")[0][0],
+			"https://gitlab/x/bar.git",
+		)
 
 
 class ResolveRepoAliasTargetTests(unittest.TestCase):

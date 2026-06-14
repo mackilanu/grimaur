@@ -1,9 +1,9 @@
 # grimoire repo aliases -- example / reference.
 #
-# Each [NAME] is a source. The FIRST (top) uncommented section is the default when you
-# don't pass --repo; --repo <NAME> forces one. A bare `search` queries every section
-# and merges the results (like `pacman -Ss`). Works with install / fetch / inspect /
-# search / update. Can be managed with `grimoire repo --add/--rm/--ls`.
+# Each [NAME] is a source. Section order is precedence: with no --repo, install / fetch /
+# inspect / update walk sections top to bottom and use the FIRST that has the package (the
+# rest are fallbacks); --repo <NAME> forces one. A bare `search` queries every section and
+# merges the results (like `pacman -Ss`). Can be managed with `grimoire repo --add/--rm/--ls`.
 # Lives at $XDG_CONFIG_HOME/grimoire/repos.conf (usually ~/.config/grimoire/repos.conf).
 #
 # URL placeholders, substituted per package:
@@ -23,9 +23,8 @@
 #  github.com/myuser/my-pkg
 
 # 2) Subdir-container -- one dir per package under a subdir (descends to <subdir>/<pkg>).
-#    Real working example: https://github.com/h8d13/VUR
 #[VUR]
-#  github.com/h8d13/VUR/tree/master/pkgs
+#  https://github.com/h8d13/VUR/tree/master/pkgs
 
 # 3) Branch-per-package -- one package per branch; put {pkg} IN the branch of a tree URL.
 #    A bare repo URL does NOT do this (it just clones the default branch). Forge forms:

@@ -1,4 +1,4 @@
-#compdef grimoire 
+#compdef grimoire
 # file usr/share/zsh/site-functions/_grimoire
 
 _grimoire() {
@@ -14,7 +14,16 @@ _grimoire() {
         '--git-mirror[Use git mirror instead of AUR RPC]'
         '--use-ssh[Use SSH instead of HTTPS for git operations]'
         '--shallow[Use shallow clones (--depth=1); default is full history]'
-        '--version[Show version]'
+        '(-v --version)'{-v,--version}'[Show version]'
+    )
+
+    # Source-selection flags shared by fetch / install / update / search / inspect
+    local -a source_opts
+    source_opts=(
+        '--repo-url[Clone from custom Git URL]:url:'
+        '--repo[Use a registered repo alias as the mirror list]:name:'
+        '--subdir[Build from this subdirectory of the repo]:subdir:'
+        '--branch[Git branch, tag, or ref to check out]:branch:'
     )
 
     _arguments -C \
@@ -34,6 +43,7 @@ _grimoire() {
                 'search:Search packages via the configured backend'
                 'inspect:Show PKGBUILD or dependency information'
                 'list:List installed foreign (AUR) packages'
+                'repo:Manage repo URL aliases in repos.conf'
             )
             _describe -t commands 'grimoire command' commands
             ;;
@@ -42,21 +52,21 @@ _grimoire() {
                 fetch)
                     _arguments \
                         $global_opts \
+                        $source_opts \
                         '--force[Reclone even if directory exists]' \
-                        '--repo-url[Clone from custom Git URL]:url:' \
                         '1:package:_grimoire_aur_packages'
                     ;;
                 install)
                     _arguments \
                         $global_opts \
-                        '--noconfirm[Pass --noconfirm to pacman/makepkg]' \
-                        '--repo-url[Clone from custom Git URL]:url:' \
+                        $source_opts \
+                        '--noconfirm[Skip confirmation prompts]' \
                         '1:package:_grimoire_aur_packages'
                     ;;
                 remove)
                     _arguments \
                         $global_opts \
-                        '--noconfirm[Pass --noconfirm to pacman]' \
+                        '--noconfirm[Skip confirmation prompts]' \
                         "--clone[Also remove the package's clone]" \
                         '--cache[Remove the search result cache]' \
                         '1::package:_grimoire_foreign_packages'
@@ -64,37 +74,46 @@ _grimoire() {
                 update)
                     _arguments \
                         $global_opts \
-                        '--noconfirm[Pass --noconfirm to pacman/makepkg]' \
+                        $source_opts \
+                        '--noconfirm[Skip confirmation prompts]' \
                         '--devel[Include VCS/devel packages]' \
-                        '--global[Update official repositories with pacman -Syu first]' \
-                        '--system-only[With --global, only update system packages and skip AUR updates]' \
-                        '--index[With --global, only sync package databases (pacman -Sy)]' \
-                        '--download[With --global, download updates without installing (pacman -Syuw)]' \
-                        '--install[With --global, install already-downloaded packages (pacman -Su)]' \
+                        '--global[Update official repositories first]' \
+                        '--system-only[With --global, skip AUR updates]' \
+                        '--index[With --global, only sync databases]' \
+                        '--download[With --global, download without installing]' \
+                        '--install[With --global, install downloaded updates]' \
                         '*:packages:_grimoire_foreign_packages'
                     ;;
                 search)
                     _arguments \
                         $global_opts \
+                        $source_opts \
                         '--limit[Limit results]:number:(10 20 50 100)' \
                         '--no-interactive[Disable interactive selection]' \
                         '--noconfirm[Skip confirmation prompts]' \
-                        '--plain[pacman -Ss style output for scripting]' \
+                        '--plain[Plain pacman-style output for scripting]' \
                         '1:pattern:_grimoire_aur_packages'
                     ;;
                 inspect)
                     _arguments \
                         $global_opts \
+                        $source_opts \
                         '--target[Which data to show]:target:(info PKGBUILD SRCINFO)' \
                         '--full[Include make/check/optional dependencies]' \
-                        '--repo-url[Inspect package from custom Git URL]:url:' \
-                        '--plain[pacman -Si style output for scripting]' \
+                        '--plain[Plain pacman-style output for scripting]' \
                         '1:package:_grimoire_aur_packages'
                     ;;
                 list)
                     _arguments \
                         $global_opts \
                         '--aur[List every AUR package (like -Sl aur)]'
+                    ;;
+                repo)
+                    _arguments \
+                        $global_opts \
+                        '--add[Register URL as a mirror under alias NAME]:url: :name:' \
+                        '--rm[Remove alias NAME from the registry]:name:' \
+                        '--ls[List registered aliases and their mirror URLs]'
                     ;;
             esac
             ;;
