@@ -104,7 +104,7 @@ _grimoire_completion()
             if [[ -r "$cache" ]]; then
                 mapfile -t COMPREPLY < <(grep -- "^$cur" "$cache" 2>/dev/null | head -200)
             else
-                (grimoire list --aur >/dev/null 2>&1 &)
+                (grimoire list --repo AUR >/dev/null 2>&1 &)
             fi
             ;;
         *)

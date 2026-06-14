@@ -79,19 +79,20 @@ packages resolve, including for a bare `update`.
    - Pass `--global` to update system first, then AUR packages.
 - `grimoire update <pkg1> <pkg2>` limits the update run to specific packages.
 - `grimoire update --devel` Update all `*-git` packages aswell (needed for `grimoire-git` for example).
-- Combine with `--refresh` to force a fresh pull of every tracked package.
+
+`update` re-pulls every tracked package already; no `--refresh` needed.
 
 ### Additional Options
 
 - Useful to build in `tmp/` pass `--dest-root` - (default: `$XDG_CACHE_HOME/grimoire`)
+- `--refresh` (global) re-pulls existing clones and expires the search cache; applies to `fetch`/`install`/`inspect`/`search`.
 - Useful for scripting on top of `grimoire`:
    - `--no-color` disables colored terminal output
    - `grimoire search <term> --limit 10` limits results to the first N matches
    - `grimoire search <term> --no-interactive` lists results without prompting to install
    - `grimoire search <term> --plain` pacman `-Ss` style two-line output for scripting (best match first)
    - `grimoire inspect <pkg> --plain` pacman `-Si` style `Key : Value` output for scripting
-   - `grimoire list --aur` lists every AUR package, like `pacman -Sl aur`
-- Force `grimoire fetch <package> --force` reclones even if the directory exists
+   - `grimoire list --repo <name>` lists every package in a repo `REPO Pkg Version`
 
 ### Details
 - Respects `IgnorePkg = x y z` from `/etc/pacman.conf`

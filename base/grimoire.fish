@@ -12,7 +12,7 @@ function __grimoire_aur_packages
     if test -r $cache
         grep -- "^"(commandline -ct) $cache 2>/dev/null | head -200
     else
-        grimoire list --aur >/dev/null 2>&1 &
+        grimoire list --repo AUR >/dev/null 2>&1 &
         disown 2>/dev/null
     end
 end
@@ -51,9 +51,6 @@ complete -c grimoire -n '__fish_seen_subcommand_from fetch install update search
 # --noconfirm (install / remove / update / search)
 complete -c grimoire -n '__fish_seen_subcommand_from install remove update search' -l noconfirm -d 'Skip confirmation prompts'
 
-# fetch
-complete -c grimoire -n '__fish_seen_subcommand_from fetch' -l force -d 'Reclone even if directory exists'
-
 # remove
 complete -c grimoire -n '__fish_seen_subcommand_from remove' -l clone -d "Also remove the package's clone"
 complete -c grimoire -n '__fish_seen_subcommand_from remove' -l cache -d 'Remove the search result cache'
@@ -72,7 +69,7 @@ complete -c grimoire -n '__fish_seen_subcommand_from inspect' -l target -x -a 'i
 complete -c grimoire -n '__fish_seen_subcommand_from inspect' -l full -d 'Include make/check/optional dependencies'
 
 # list
-complete -c grimoire -n '__fish_seen_subcommand_from list' -l aur -d 'List every AUR package (like -Sl aur)'
+complete -c grimoire -n '__fish_seen_subcommand_from list' -l repo -d 'List every package in repo NAME (e.g. AUR)'
 
 # repo
 complete -c grimoire -n '__fish_seen_subcommand_from repo' -l add -x -d 'Register URL as a mirror under alias NAME'

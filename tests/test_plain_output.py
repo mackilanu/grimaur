@@ -2,6 +2,7 @@ import contextlib
 import io
 import unittest
 import unittest.mock
+from pathlib import Path
 
 from grimoireshim import grimoire
 
@@ -60,30 +61,64 @@ class SrcinfoInfoFieldTests(unittest.TestCase):
 		self.assertEqual(fields["Conflicts With"], "brave")
 
 
-class ListAurTests(unittest.TestCase):
-	def test_sl_aur_shape(self) -> None:
+class ListRepoTests(unittest.TestCase):
+	def test_aur_sl_shape(self) -> None:
 		out = io.StringIO()
 		with (
 			unittest.mock.patch.object(
-				grimoire, "aur_package_names", return_value=["foo", "bar"]
+				grimoire,
+				"aur_packages",
+				return_value=[("foo", "1.0-1", "d"), ("bar", None, "d")],
 			),
 			unittest.mock.patch.object(
 				grimoire, "installed_package_set", return_value={"bar"}
 			),
 			contextlib.redirect_stdout(out),
 		):
-			grimoire.list_aur_packages()
+			grimoire.list_repo_packages("AUR", Path("/unused"))
+		# label matches the conf section (AUR), versions from the metadata dump,
+		# "unknown-version" only when the dump has none.
 		self.assertEqual(
 			out.getvalue(),
-			"aur foo unknown-version\naur bar unknown-version [installed]\n",
+			"AUR foo 1.0-1\nAUR bar unknown-version [installed]\n",
 		)
 
-	def test_empty_name_list_is_an_error(self) -> None:
+	def test_empty_aur_list_is_an_error(self) -> None:
 		with (
-			unittest.mock.patch.object(grimoire, "aur_package_names", return_value=[]),
+			unittest.mock.patch.object(grimoire, "aur_packages", return_value=[]),
 			self.assertRaises(grimoire.AurGitError),
 		):
-			grimoire.list_aur_packages()
+			grimoire.list_repo_packages("AUR", Path("/unused"))
+
+	def test_custom_repo_enumerates_with_versions(self) -> None:
+		out = io.StringIO()
+		results = [
+			grimoire.SearchResult(
+				name="foo", version="1.0-1", description=None, installed=False, score=0
+			),
+			grimoire.SearchResult(
+				name="bar", version="2.0-1", description=None, installed=True, score=0
+			),
+		]
+		with (
+			unittest.mock.patch.object(
+				grimoire,
+				"_resolve_repo_for_package",
+				return_value=("https://x/r.git", None, None, []),
+			),
+			unittest.mock.patch.object(
+				grimoire, "search_packages_repo", return_value=results
+			),
+			unittest.mock.patch.object(
+				grimoire, "installed_package_set", return_value={"bar"}
+			),
+			contextlib.redirect_stdout(out),
+		):
+			grimoire.list_repo_packages("POWER", Path("/unused"))
+		self.assertEqual(
+			out.getvalue(),
+			"POWER foo 1.0-1\nPOWER bar 2.0-1 [installed]\n",
+		)
 
 
 class PrintInfoFieldsTests(unittest.TestCase):

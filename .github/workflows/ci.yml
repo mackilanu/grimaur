@@ -103,12 +103,14 @@ jobs:
           ./grimoire repo --add 'https://github.com/archlinux/aur.git' AUR
           ./grimoire fetch $PKG
           ./grimoire --refresh fetch $PKG
-          ./grimoire fetch --force $PKG
           rm -rf ~/.cache/grimoire/$PKG
           ./grimoire --shallow fetch $PKG
           count=$(git -C ~/.cache/grimoire/$PKG rev-list --count HEAD)
           [ "$count" = "1" ] && echo "shallow depth=1 PASS" || { echo "expected 1, got $count"; exit 1; }
-          ./grimoire fetch --force $PKG
+          # a leftover non-git dir in the cache is recreated automatically (no flag)
+          rm -rf ~/.cache/grimoire/$PKG && mkdir -p ~/.cache/grimoire/$PKG && touch ~/.cache/grimoire/$PKG/junk
+          ./grimoire fetch $PKG
+          test -d ~/.cache/grimoire/$PKG/.git && echo "auto-recover non-git dir PASS"
           ./grimoire inspect $PKG --target PKGBUILD
           time ./grimoire search $PATTERN --no-interactive
           ./grimoire install $PKG --noconfirm       # bare -> default [AUR]

@@ -51,7 +51,6 @@ _grimoire() {
                     _arguments \
                         $global_opts \
                         $source_opts \
-                        '--force[Reclone even if directory exists]' \
                         '1:package:_grimoire_aur_packages'
                     ;;
                 install)
@@ -100,7 +99,7 @@ _grimoire() {
                 list)
                     _arguments \
                         $global_opts \
-                        '--aur[List every AUR package (like -Sl aur)]'
+                        '--repo[List every package in repo NAME (e.g. AUR)]:repo:'
                     ;;
                 repo)
                     _arguments \
@@ -130,7 +129,7 @@ _grimoire_aur_packages() {
         packages=(${(f)"$(grep -- "^${PREFIX}" "$cache" 2>/dev/null | head -200)"})
         compadd -a packages
     else
-        (grimoire list --aur >/dev/null 2>&1 &)
+        (grimoire list --repo AUR >/dev/null 2>&1 &)
     fi
 }
 

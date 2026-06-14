@@ -98,37 +98,43 @@ class CachedJsonTests(unittest.TestCase):
 
 
 class NameSourceSelectionTests(unittest.TestCase):
-	def test_gz_primary_skips_git(self) -> None:
+	def test_meta_dump_primary_skips_git(self) -> None:
 		with (
-			mock.patch.object(grimoire, "_fetch_names_gz", return_value=["foo"]) as gz,
+			mock.patch.object(
+				grimoire, "_fetch_aur_meta", return_value=[("foo", "1-1", "d")]
+			) as meta,
 			mock.patch.object(grimoire, "_fetch_names_git") as git,
 		):
-			self.assertEqual(grimoire._fetch_aur_package_names(), ["foo"])
-		gz.assert_called_once()
+			self.assertEqual(grimoire._fetch_aur_packages(), [("foo", "1-1", "d")])
+		meta.assert_called_once()
 		git.assert_not_called()
 
-	def test_gz_failure_falls_back_to_git(self) -> None:
+	def test_meta_failure_falls_back_to_git_names(self) -> None:
 		stderr = io.StringIO()
 		with (
-			mock.patch.object(grimoire, "_fetch_names_gz", return_value=None),
+			mock.patch.object(grimoire, "_fetch_aur_meta", return_value=None),
 			mock.patch.object(
 				grimoire, "_fetch_names_git", return_value=["bar"]
 			) as git,
 			contextlib.redirect_stderr(stderr),
 		):
-			self.assertEqual(grimoire._fetch_aur_package_names(), ["bar"])
+			self.assertEqual(grimoire._fetch_aur_packages(), [("bar", None, None)])
 		git.assert_called_once()
 		self.assertIn("git mirror", stderr.getvalue())
 
-	def test_fresh_names_write_completion_cache(self) -> None:
+	def test_fresh_fetch_writes_completion_cache(self) -> None:
 		tmp = tempfile.TemporaryDirectory()
 		self.addCleanup(tmp.cleanup)
-		# completion.cache lands in dest_root, sibling of .searchcache
+		# completion.cache (names only) lands in dest_root, sibling of .searchcache
 		with (
 			mock.patch.object(grimoire, "CACHE_DIR", Path(tmp.name) / ".searchcache"),
-			mock.patch.object(grimoire, "_fetch_names_gz", return_value=["foo", "bar"]),
+			mock.patch.object(
+				grimoire,
+				"_fetch_aur_meta",
+				return_value=[("foo", "1", None), ("bar", "2", None)],
+			),
 		):
-			grimoire._fetch_aur_package_names_with_completion()
+			grimoire._fetch_aur_packages_with_completion()
 		self.assertEqual(
 			(Path(tmp.name) / "completion.cache").read_text(), "foo\nbar\n"
 		)
@@ -141,35 +147,33 @@ class GitSearchCacheTests(unittest.TestCase):
 		self.cache_dir = Path(tmp.name)
 		for target, value in (
 			("CACHE_DIR", self.cache_dir),
-			# force the git-mirror name list so packages.gz never hits the network
-			("_fetch_names_gz", mock.Mock(return_value=None)),
-			("get_aur_remote", mock.Mock(return_value="https://aur.example")),
 			("installed_package_set", mock.Mock(return_value=set())),
 		):
 			patcher = mock.patch.object(grimoire, target, value)
 			patcher.start()
 			self.addCleanup(patcher.stop)
 
-	def test_empty_mirror_output_is_not_cached(self) -> None:
-		with mock.patch.object(grimoire, "run_command", return_value=""):
+	def test_matches_carry_meta_version_and_description(self) -> None:
+		meta = [
+			("foopkg", "1.0-1", "a foo"),
+			("foolib", "2.0-1", "a lib"),
+			("bar", "3-1", "x"),
+		]
+		with mock.patch.object(grimoire, "_fetch_aur_meta", return_value=meta):
 			results = grimoire.search_packages_git(regex=None, needle="foo", limit=None)
-		self.assertEqual(results, [])
-		self.assertFalse((self.cache_dir / "packages.json").exists())
+		by_name = {r.name: r for r in results}
+		self.assertEqual(set(by_name), {"foopkg", "foolib"})
+		self.assertEqual(by_name["foopkg"].version, "1.0-1")
+		self.assertEqual(by_name["foolib"].description, "a lib")
 
-	def test_metadata_failure_drops_entry_without_killing_search(self) -> None:
-		ls_remote = "abc123\trefs/heads/foopkg\ndef456\trefs/heads/foolib\n"
-
-		def srcinfo(package: str) -> tuple[str, str]:
-			if package == "foopkg":
-				raise grimoire.AurGitError("boom")
-			return ("1.0", "desc")
-
+	def test_no_packages_returns_empty_and_caches_nothing(self) -> None:
 		with (
-			mock.patch.object(grimoire, "run_command", return_value=ls_remote),
-			mock.patch.object(grimoire, "git_srcinfo_metadata", side_effect=srcinfo),
+			mock.patch.object(grimoire, "_fetch_aur_meta", return_value=None),
+			mock.patch.object(grimoire, "_fetch_names_git", return_value=None),
 		):
-			results = grimoire.search_packages_git(regex=None, needle="foo", limit=None)
-		self.assertEqual([r.name for r in results], ["foolib"])
+			results = grimoire.search_packages_git(regex=None, needle="zzz", limit=None)
+		self.assertEqual(results, [])
+		self.assertFalse((self.cache_dir / "aurmeta.json").exists())
 
 
 if __name__ == "__main__":

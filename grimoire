@@ -40,7 +40,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-import threading
 import time
 import urllib.error
 import urllib.parse
@@ -821,7 +820,6 @@ def ensure_clone(
 	dest_root: Path,
 	*,
 	refresh: bool = False,
-	force_reclone: bool = False,
 	repo_url: str | None = None,
 	branch: str | None = None,
 	subdir: str | None = None,
@@ -830,14 +828,9 @@ def ensure_clone(
 	dest_root.mkdir(parents=True, exist_ok=True)
 	package_dir = dest_root / package
 
+	# A leftover non-git directory in our own cache is junk -> recreate it.
 	if package_dir.exists() and not (package_dir / ".git").is_dir():
-		if force_reclone:
-			shutil.rmtree(package_dir)
-		else:
-			raise AurGitError(
-				f"Destination '{package_dir}' exists but is not a git repository. "
-				"Use --force to overwrite."
-			)
+		shutil.rmtree(package_dir)
 
 	if repo_url:
 		remote_url = _remote_for(repo_url)
@@ -854,18 +847,14 @@ def ensure_clone(
 		else:
 			fetch_refspec = ()
 			reset_targets = ("origin/HEAD",)
-		recover_on_reset_fail = False
 	else:
 		# No repo_url -> the AUR git mirror, one branch per package.
 		remote_url = get_aur_remote()
 		clone_extra = ["--branch", package, "--single-branch"]
 		fetch_refspec = (package,)
 		reset_targets = (f"origin/{package}",)
-		recover_on_reset_fail = True
 
-	reuse_existing = (
-		package_dir.exists() and (package_dir / ".git").is_dir() and not force_reclone
-	)
+	reuse_existing = package_dir.exists() and (package_dir / ".git").is_dir()
 	if reuse_existing:
 		# Don't reuse a clone whose origin no longer matches the requested source:
 		# an old AUR clone reused under --repo (or vice versa) would otherwise be
@@ -896,15 +885,12 @@ def ensure_clone(
 			try:
 				_reset_git_worktree(package_dir, reset_targets)
 			except AurGitError:
-				if not recover_on_reset_fail:
-					raise
-				if package_dir.exists():
-					shutil.rmtree(package_dir)
+				# Corrupt worktree/index -> drop it and reclone from scratch.
+				shutil.rmtree(package_dir)
 				return ensure_clone(
 					package,
 					dest_root,
 					refresh=False,
-					force_reclone=True,
 					repo_url=repo_url,
 					branch=branch,
 					subdir=subdir,
@@ -1352,19 +1338,38 @@ def list_installed_packages() -> None:
 		print(f"  {style(name, BOLD)} {style(version, GREEN)}")
 
 
-def list_aur_packages() -> None:
-	# yay/paru -Sl aur shape: "aur <name> unknown-version [installed]".
-	# The AUR exposes no bulk version data, hence the literal placeholder.
-	names = aur_package_names()
-	if not names:
-		raise AurGitError("Could not fetch the AUR package list")
+def list_repo_packages(name: str, dest_root: Path) -> None:
+	# pacman -Sl <repo> shape: "<repo> <name> <version> [installed]". "AUR" reads the
+	# bulk metadata dump; any other alias is enumerated like a search with an empty term.
 	installed = installed_package_set()
-	lines: list[str] = []
-	for name in names:
-		line = f"aur {name} unknown-version"
-		if name in installed:
-			line += " [installed]"
-		lines.append(line)
+	if name == "AUR":
+		meta = aur_packages()
+		if not meta:
+			raise AurGitError("Could not fetch the AUR package list")
+		rows: list[tuple[str, str | None]] = [(n, ver) for n, ver, _ in meta]
+	else:
+		url, branch, subdir, _ = _resolve_repo_for_package(
+			None, alias=name, repo_url=None, branch=None, subdir=None
+		)
+		if url is None:
+			raise AurGitError(f"Repo '{name}' has no listable URL")
+		results = search_packages_repo(
+			url,
+			branch,
+			subdir,
+			regex=None,
+			needle="",
+			limit=-1,
+			source=name,
+			dest_root=dest_root,
+			alias=name,
+		)
+		rows = [(r.name, r.version) for r in results]
+	lines = [
+		f"{name} {n} {ver or 'unknown-version'}"
+		+ (" [installed]" if n in installed else "")
+		for n, ver in rows
+	]
 	try:
 		sys.stdout.write("\n".join(lines) + "\n")
 	except BrokenPipeError:
@@ -2047,27 +2052,31 @@ def search_packages(
 	return search_packages_git(regex=regex, needle=needle, limit=limit)
 
 
-def _fetch_names_gz() -> list[str] | None:
-	# Lazy imports: only paid on a cold packages.json cache.
+def _fetch_aur_meta() -> list[tuple[str, str | None, str | None]] | None:
+	# Bulk AUR metadata dump: name + version + description for every package, one gzip.
 	import gzip
 	import urllib.request
 
-	url = "https://aur.archlinux.org/packages.gz"
+	url = "https://aur.archlinux.org/packages-meta-v1.json.gz"
 	if DEBUG:
 		print(f"+ GET {url}", file=sys.stderr)
 	try:
-		with urllib.request.urlopen(url, timeout=10) as response:  # noqa: S310 - hardcoded https AUR endpoint
-			raw = response.read()
-		names = [
-			line
-			for line in gzip.decompress(raw).decode().splitlines()
-			if line and not line.startswith("#")
-		]
+		with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 - hardcoded https AUR endpoint
+			data = json.loads(gzip.decompress(response.read()).decode())
 	except (OSError, ValueError) as exc:
 		if DEBUG:
-			print(f"+ packages.gz failed: {exc}", file=sys.stderr)
+			print(f"+ packages-meta failed: {exc}", file=sys.stderr)
 		return None
-	return names or None
+	rows = [
+		(
+			entry["Name"],
+			_str_or_none(entry.get("Version")),
+			_str_or_none(entry.get("Description")),
+		)
+		for entry in (data if isinstance(data, list) else [])
+		if isinstance(entry, dict) and isinstance(entry.get("Name"), str)
+	]
+	return rows or None
 
 
 def _fetch_names_git() -> list[str] | None:
@@ -2075,34 +2084,44 @@ def _fetch_names_git() -> list[str] | None:
 	return _lsremote_names(output) or None
 
 
-def _fetch_aur_package_names() -> list[str] | None:
-	# packages.gz is the canonical list: live packages only (ls-remote also
-	# returns ~50k branches of deleted packages), includes split pkgnames,
-	# ~8x faster and ~20x smaller. The mirror stays as the AUR-down fallback.
-	names = _fetch_names_gz()
-	if names:
-		return names
-	print("AUR packages.gz unavailable; using git mirror list...", file=sys.stderr)
-	return _fetch_names_git()
+def _fetch_aur_packages() -> list[tuple[str, str | None, str | None]] | None:
+	# The metadata dump is canonical (names + versions + descriptions in one fetch).
+	# The git mirror's branch list is the names-only fallback when the dump is down.
+	rows = _fetch_aur_meta()
+	if rows:
+		return rows
+	names = _fetch_names_git()
+	if not names:
+		return None
+	print(
+		"AUR metadata dump unavailable; using git mirror name list...", file=sys.stderr
+	)
+	return [(name, None, None) for name in names]
 
 
-def _fetch_aur_package_names_with_completion() -> list[str] | None:
-	names = _fetch_aur_package_names()
-	if names:
-		# Plain-text list for the shell completions (newline list greps
-		# fast; JSON does not), at the conventional dest_root location.
+def _fetch_aur_packages_with_completion() -> (
+	list[tuple[str, str | None, str | None]] | None
+):
+	rows = _fetch_aur_packages()
+	if rows:
+		# Plain-text name list for the shell completions (newline list greps fast).
 		path = _completion_cache_path()
 		if path is not None:
-			_atomic_write(path, "\n".join(names) + "\n")
-	return names
+			_atomic_write(path, "\n".join(row[0] for row in rows) + "\n")
+	return rows
 
 
-def aur_package_names() -> list[str]:
-	# None on empty/failed fetch so a transient hiccup is never cached for an hour
-	names = cached_json(
-		"packages.json", CACHE_TTL, _fetch_aur_package_names_with_completion
-	)
-	return names if isinstance(names, list) else []
+def aur_packages() -> list[tuple[str, str | None, str | None]]:
+	# (name, version, description) for every AUR package. None on a failed fetch so a
+	# transient hiccup is never cached for an hour; cache hits come back as JSON lists.
+	rows = cached_json("aurmeta.json", CACHE_TTL, _fetch_aur_packages_with_completion)
+	out: list[tuple[str, str | None, str | None]] = []
+	for row in rows if isinstance(rows, list) else []:
+		if isinstance(row, list | tuple) and row and isinstance(row[0], str):
+			ver = _str_or_none(row[1]) if len(row) > 1 else None
+			desc = _str_or_none(row[2]) if len(row) > 2 else None
+			out.append((row[0], ver, desc))
+	return out
 
 
 def search_packages_git(
@@ -2111,100 +2130,30 @@ def search_packages_git(
 	needle: str | None,
 	limit: int | None,
 ) -> list[SearchResult]:
-	# Default to 50 results if no limit specified to avoid fetching metadata for thousands of packages
+	# Score every AUR package by name; version/description come straight from the bulk
+	# metadata dump, so there is no per-package fetch.
 	if limit is None:
 		limit = 50
-
-	candidates: list[tuple[int, str]] = []
-	for package in aur_package_names():
-		score = compute_match_score(package, regex=regex, needle=needle)
-		if score is None:
-			continue
-		candidates.append((score, package))
-		if sys.stderr.isatty():
-			print(
-				f"\r{style('Found results:', YELLOW)} {len(candidates)}",
-				end="",
-				file=sys.stderr,
-				flush=True,
-			)
-	if sys.stderr.isatty():
-		print(file=sys.stderr)
-	if limit is not None and limit >= 0:
-		candidates = heapq.nsmallest(
-			limit, candidates, key=lambda item: (item[0], item[1])
-		)
+	scored: list[tuple[int, tuple[str, str | None, str | None]]] = []
+	for row in aur_packages():
+		score = compute_match_score(row[0], regex=regex, needle=needle)
+		if score is not None:
+			scored.append((score, row))
+	if limit >= 0:
+		scored = heapq.nsmallest(limit, scored, key=lambda item: (item[0], item[1][0]))
 	else:
-		candidates.sort(key=lambda item: (item[0], item[1]))
-	installed_set = installed_package_set()
-	total_candidates = len(candidates)
-
-	# Fetch metadata in parallel for speed
-	def fetch_metadata(score_pkg: tuple[int, str]) -> SearchResult:
-		score, package = score_pkg
-		version: str | None = None
-		description: str | None = None
-		# Cached for search responsiveness; the update flow calls
-		# git_srcinfo_metadata directly so version checks stay live.
-		# Cache hits come back as JSON lists, not the original tuple.
-		meta = cached_json(
-			f"srcinfo/{package}.json",
-			CACHE_TTL,
-			lambda: git_srcinfo_metadata(package),
-		)
-		if isinstance(meta, (list, tuple)) and len(meta) == 2:
-			raw_version, raw_description = meta
-			version = _str_or_none(raw_version)
-			description = _str_or_none(raw_description)
-		return SearchResult(
-			name=package,
-			version=version,
-			description=description,
-			installed=package in installed_set,
+		scored.sort(key=lambda item: (item[0], item[1][0]))
+	installed = installed_package_set()
+	return [
+		SearchResult(
+			name=row[0],
+			version=row[1],
+			description=row[2],
+			installed=row[0] in installed,
 			score=score,
 		)
-
-	# Plain threads instead of ThreadPoolExecutor: concurrent.futures drags in
-	# logging (~15ms import); threading is already loaded at startup.
-	slots: list[SearchResult | None] = [None] * len(candidates)
-	errors: list[str] = []
-	progress_lock = threading.Lock()
-	done = 0
-	workers = min(10, len(candidates))
-
-	def fetch_slice(offset: int) -> None:
-		nonlocal done
-		for idx in range(offset, len(candidates), workers):
-			# A raised fetch must not kill the thread: that would silently
-			# drop every remaining candidate in this stride.
-			try:
-				slots[idx] = fetch_metadata(candidates[idx])
-			except Exception as exc:
-				errors.append(f"{candidates[idx][1]}: {exc}")
-			if sys.stderr.isatty():
-				with progress_lock:
-					done += 1
-					print(
-						f"\r{style('Fetching metadata:', YELLOW)} {done}/{total_candidates}",
-						end="",
-						file=sys.stderr,
-						flush=True,
-					)
-
-	threads = [
-		threading.Thread(target=fetch_slice, args=(offset,))
-		for offset in range(workers)
+		for score, row in scored
 	]
-	for thread in threads:
-		thread.start()
-	for thread in threads:
-		thread.join()
-
-	if sys.stderr.isatty():
-		print(file=sys.stderr)
-	for message in errors:
-		print(f"warning: metadata fetch failed: {message}", file=sys.stderr)
-	return [result for result in slots if result is not None]
 
 
 def _repo_package_names(
@@ -2633,7 +2582,6 @@ def fetch_package(
 	dest_root: Path,
 	*,
 	refresh: bool,
-	force: bool,
 	repo_url: str | None = None,
 	branch: str | None = None,
 	subdir: str | None = None,
@@ -2646,15 +2594,12 @@ def fetch_package(
 	| None = None,
 ) -> Path:
 	if sources is not None:
-		package_dir = _clone_any_source(
-			package, dest_root, sources, refresh=refresh, force_reclone=force
-		)
+		package_dir = _clone_any_source(package, dest_root, sources, refresh=refresh)
 	else:
 		package_dir = ensure_clone(
 			package,
 			dest_root,
 			refresh=refresh,
-			force_reclone=force,
 			repo_url=repo_url,
 			branch=branch,
 			subdir=subdir,
@@ -2716,9 +2661,6 @@ def build_parser() -> argparse.ArgumentParser:
 		nargs="+",
 		metavar="package",
 		help="Package name(s) / branch to clone",
-	)
-	fetch_parser.add_argument(
-		"--force", action="store_true", help="Reclone even if directory exists"
 	)
 	fetch_src = fetch_parser.add_mutually_exclusive_group()
 	fetch_src.add_argument("--repo-url", help="Clone from custom Git URL")
@@ -2885,9 +2827,9 @@ def build_parser() -> argparse.ArgumentParser:
 	)
 	list_parser = subparsers.add_parser("list", help="List installed foreign packages")
 	list_parser.add_argument(
-		"--aur",
-		action="store_true",
-		help="List every package instead (-Sl aur)",
+		"--repo",
+		metavar="NAME",
+		help="List every package in repo NAME (use AUR for the AUR), like pacman -Sl <repo>",
 	)
 
 	repo_parser = subparsers.add_parser(
@@ -3028,7 +2970,6 @@ def _clone_any_source(
 	],
 	*,
 	refresh: bool,
-	force_reclone: bool = False,
 ) -> Path:
 	# Walk the source chain in order; first that clones a dir holding a PKGBUILD wins.
 	# A source whose clone fails (404) or lacks the package (subdir-container miss) is
@@ -3044,7 +2985,6 @@ def _clone_any_source(
 				package,
 				dest_root,
 				refresh=refresh,
-				force_reclone=force_reclone,
 				repo_url=repo_url,
 				branch=branch,
 				subdir=subdir,
@@ -3184,7 +3124,6 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 						package,
 						dest_root,
 						refresh=refresh,
-						force=args.force,
 						repo_url=repo_url,
 						branch=branch,
 						subdir=subdir,
@@ -3195,7 +3134,6 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 						package,
 						dest_root,
 						refresh=refresh,
-						force=args.force,
 						sources=pkg_sources,
 					)
 		elif args.command == "install":
@@ -3447,8 +3385,8 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 						plain=args.plain,
 					)
 		elif args.command == "list":
-			if args.aur:
-				list_aur_packages()
+			if args.repo:
+				list_repo_packages(args.repo, dest_root)
 			else:
 				list_installed_packages()
 		elif args.command == "repo":
