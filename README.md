@@ -69,9 +69,7 @@ See [`repos.conf.example`](./repos.conf.example) for examples.
 
 Section order is precedence: `install`/`fetch`/`inspect`/`update` walk sections top to
 bottom and build from the first that has the package. On first use, **auto-creates**
-`~/.config/grimoire/repos.conf` with `[ARCH]` as the default. AUR is opt-in (a commented
-`[AUR]` section pointing at the AUR git mirror); enable it (or move it on top) to have AUR
-packages resolve, including for a bare `update`.
+`~/.config/grimoire/repos.conf` with `[ARCH]` as the default.
 
 ### Stay Updated
 

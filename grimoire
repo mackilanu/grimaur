@@ -142,14 +142,13 @@ _DEFAULT_REPOS_CONF = """\
 
 # Insert a custom repo here. Examples can be found in the repo.
 
-# Default: Arch's official packages, searches local DB first... But:
-# `grimoire fetch <pkg>` lets you build official package from source.
+# Default: Arch's official packages.
 [ARCH]
   https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git
 
-# AUR git mirror, opt-in: uncomment (move above [ARCH] to default to it).
-#[AUR]
-#  https://github.com/archlinux/aur.git
+# Off by default (AUR is opt-in).
+[AUR]
+  false
 """
 
 
@@ -500,6 +499,12 @@ def _repos_section_end(lines: list[str], header_idx: int) -> int:
 
 def add_repo_alias(name: str, url: str) -> None:
 	# Edit the file textually so comments and commented-out sections survive.
+	if name == "AUR":
+		print(
+			"[AUR] is a reserved toggle (true/false); edit repos.conf to enable it.",
+			file=sys.stderr,
+		)
+		return
 	path = _repo_registry_path()
 	try:
 		lines = path.read_text().splitlines()
@@ -547,11 +552,24 @@ def resolve_repo_alias(name: str) -> list[str]:
 	return urls
 
 
+def _aur_enabled() -> bool:
+	# [AUR] is a reserved toggle section -- a true/false value, not a URL list. It turns
+	# the built-in AUR git backend on for the DEFAULT chain, search, and `list --repo AUR`.
+	# An explicit `--repo AUR` is a deliberate override and ignores this. Absent or a
+	# falsey/empty token = off (AUR is opt-in); a legacy URL value reads as on.
+	vals = load_repo_registry().get("AUR")
+	if not vals:
+		return False
+	return vals[0].strip().lower() not in ("false", "no", "off", "0", "disabled")
+
+
 def _default_repo() -> str | None:
 	# The source used when no --repo/--repo-url is given: the first section in
 	# repos.conf (priority order, top wins), or None for the built-in AUR when there
-	# is no config. "AUR" as the first section also means the built-in AUR backend.
+	# is no config. A disabled [AUR] is skipped so it can't become the default.
 	for name in load_repo_registry():
+		if name == "AUR" and not _aur_enabled():
+			continue
 		return name
 	return None
 
@@ -1354,6 +1372,12 @@ def list_repo_packages(name: str, dest_root: Path) -> None:
 	# bulk metadata dump; any other alias is enumerated like a search with an empty term.
 	installed = installed_package_set()
 	if name == "AUR":
+		if not _aur_enabled():
+			print(
+				"AUR is disabled. Set [AUR] = true in repos.conf to enable it.",
+				file=sys.stderr,
+			)
+			return
 		meta = aur_packages()
 		if not meta:
 			raise AurGitError("Could not fetch the AUR package list")
@@ -2869,6 +2893,11 @@ def _resolve_repo_for_package(
 	# --repo NAME expands to an ordered mirror list; --repo-url is a single URL.
 	# (argparse keeps them mutually exclusive.) First URL is primary, rest fallbacks.
 	# Keyed on a package name so update/search can resolve per package in a loop.
+	if alias == "AUR":
+		# Reserved: the built-in AUR git backend (branch-per-package), not a URL alias.
+		# An explicit --repo AUR is a deliberate override -- it works regardless of the
+		# [AUR] toggle (which only governs the default chain / search / list).
+		return None, branch, subdir, []
 	if alias:
 		urls = resolve_repo_alias(alias)
 	elif repo_url:
@@ -2946,7 +2975,9 @@ def _resolve_sources(
 	] = []
 	for name in load_repo_registry():
 		if name == "AUR":
-			sources.append((None, branch, subdir, []))
+			# Reserved toggle: include the built-in AUR backend only when enabled.
+			if _aur_enabled():
+				sources.append((None, branch, subdir, []))
 		else:
 			sources.append(
 				_resolve_repo_for_package(
@@ -3059,16 +3090,13 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 	dest_root = Path(args.dest_root).expanduser().resolve()
 	refresh: bool = bool(args.refresh)
 
-	global USE_COLOR, USE_SSH, SHALLOW_CLONE, CACHE_DIR, CACHE_TTL, AUR_GIT_MIRROR
+	global USE_COLOR, USE_SSH, SHALLOW_CLONE, CACHE_DIR, CACHE_TTL
 	CACHE_DIR = dest_root / ".searchcache"
 	if refresh:
 		# --refresh means "give me fresh data": expire every read,
 		# keep writing so the cache ends up repopulated.
 		CACHE_TTL = 0
 	USE_COLOR = not getattr(args, "no_color", False) and sys.stdout.isatty()
-	# An [AUR] section's URL overrides the git mirror (scheme added if omitted).
-	for raw in load_repo_registry().get("AUR", []):
-		AUR_GIT_MIRROR = _ensure_scheme(raw)
 	USE_SSH = bool(getattr(args, "use_ssh", False))
 	SHALLOW_CLONE = bool(getattr(args, "shallow", False))
 	# Never block on an interactive git auth prompt (e.g. a 404 clone of a templated
@@ -3236,9 +3264,11 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 					(explicit_alias, explicit_url)
 				]
 			else:
-				sources = [(name, None) for name in load_repo_registry()] or [
-					(None, None)
-				]
+				sources = [
+					(name, None)
+					for name in load_repo_registry()
+					if name != "AUR" or _aur_enabled()
+				] or [(None, None)]
 
 			results: list[SearchResult] = []
 			for src_alias, src_url in sources:
@@ -3398,6 +3428,10 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 					)
 					return 0
 				for name, urls in registry.items():
+					if name == "AUR":
+						state = "enabled" if _aur_enabled() else "disabled"
+						print(f"[AUR] (built-in mirror, {state})")
+						continue
 					print(f"[{name}]")
 					for url in urls:
 						print(f"  {url}")

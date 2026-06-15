@@ -412,9 +412,10 @@ class DefaultRepoTests(unittest.TestCase):
 		self.assertFalse(self.conf.exists())
 		grimoire._ensure_repos_conf()
 		self.assertTrue(self.conf.exists())
-		# Seeded default is [ARCH]; [AUR] present but commented (opt-in).
+		# Seeded default is [ARCH]; [AUR] is a reserved toggle, present but off (opt-in).
 		self.assertEqual(grimoire._default_repo(), "ARCH")
-		self.assertNotIn("AUR", grimoire.load_repo_registry())
+		self.assertIn("AUR", grimoire.load_repo_registry())
+		self.assertFalse(grimoire._aur_enabled())
 
 	def test_ensure_repos_conf_does_not_clobber(self) -> None:
 		self._write("[VUR]\n  https://x/v\n")
@@ -478,10 +479,23 @@ class ResolveSourcesTests(unittest.TestCase):
 		)
 
 	def test_aur_section_becomes_backend_marker_in_order(self) -> None:
-		self._write("[AUR]\n  https://aur/rpc/\n\n[VUR]\n  https://x/vur.git\n")
+		self._write("[AUR]\n  true\n\n[VUR]\n  https://x/vur.git\n")
 		sources = grimoire._resolve_sources(self._args(), "bash")
 		self.assertEqual(sources[0], (None, None, None, []))
 		self.assertEqual(sources[1][0], "https://x/vur.git")
+
+	def test_disabled_aur_excluded_from_chain(self) -> None:
+		self._write("[AUR]\n  false\n\n[VUR]\n  https://x/vur.git\n")
+		self.assertFalse(grimoire._aur_enabled())
+		sources = grimoire._resolve_sources(self._args(), "bash")
+		self.assertEqual([s[0] for s in sources], ["https://x/vur.git"])
+
+	def test_explicit_repo_aur_works_even_when_disabled(self) -> None:
+		# Explicit --repo AUR is a deliberate override: the built-in backend regardless
+		# of the toggle (and never parsed as a URL alias).
+		self._write("[AUR]\n  false\n\n[VUR]\n  https://x/vur.git\n")
+		sources = grimoire._resolve_sources(self._args(repo="AUR"), "bash")
+		self.assertEqual(sources, [(None, None, None, [])])
 
 	def test_template_resolved_per_package(self) -> None:
 		self._write("[ARCH]\n  https://gitlab/x/{pkg}.git\n")

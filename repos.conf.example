@@ -49,7 +49,9 @@
 #  github.com/myuser/myaur/tree/master/pkgs
 #  codeberg.org/myuser/myaur/tree/master/pkgs
 
-# --- The AUR git mirror (one branch per package). Opt-in: uncomment, and move it
-# above [ARCH] to make it your default source.
-#[AUR]
-#  https://github.com/archlinux/aur.git
+# --- The AUR git mirror (one branch per package). Reserved toggle: [AUR] holds
+# true/false, NOT a URL. Off by default (opt-in). Set true to enable it in the default
+# chain, search, and `list --repo AUR`; move it above [ARCH] to make it your default.
+# (An explicit `--repo AUR` always works as a deliberate override, even when off.)
+[AUR]
+  false

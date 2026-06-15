@@ -65,6 +65,7 @@ class ListRepoTests(unittest.TestCase):
 	def test_aur_sl_shape(self) -> None:
 		out = io.StringIO()
 		with (
+			unittest.mock.patch.object(grimoire, "_aur_enabled", return_value=True),
 			unittest.mock.patch.object(
 				grimoire,
 				"aur_packages",
@@ -85,10 +86,23 @@ class ListRepoTests(unittest.TestCase):
 
 	def test_empty_aur_list_is_an_error(self) -> None:
 		with (
+			unittest.mock.patch.object(grimoire, "_aur_enabled", return_value=True),
 			unittest.mock.patch.object(grimoire, "aur_packages", return_value=[]),
 			self.assertRaises(grimoire.AurGitError),
 		):
 			grimoire.list_repo_packages("AUR", Path("/unused"))
+
+	def test_disabled_aur_returns_early(self) -> None:
+		# [AUR] off: list --repo AUR prints a notice and does not touch the dump.
+		out = io.StringIO()
+		with (
+			unittest.mock.patch.object(grimoire, "_aur_enabled", return_value=False),
+			unittest.mock.patch.object(grimoire, "aur_packages") as dump,
+			contextlib.redirect_stdout(out),
+		):
+			grimoire.list_repo_packages("AUR", Path("/unused"))
+		dump.assert_not_called()
+		self.assertEqual(out.getvalue(), "")
 
 	def test_custom_repo_enumerates_with_versions(self) -> None:
 		out = io.StringIO()
