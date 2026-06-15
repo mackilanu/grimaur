@@ -874,6 +874,19 @@ def _origin_label(package_dir: Path) -> str:
 	return _normalize_git_url(origin).split("/", 1)[0]
 
 
+def _init_submodules(clone_root: Path) -> None:
+	# `--submod`: populate the repo's git submodules after checkout (off by default, like
+	# git and makepkg themselves). No-op unless the clone has a .gitmodules at its root.
+	# Submodules outside a sparse checkout stay unpopulated -- git skips gitlinks not in
+	# the worktree, which is the right behaviour for a monorepo subdir build.
+	if not (clone_root / ".gitmodules").is_file():
+		return
+	print(style("==> updating submodules", DIM))
+	run_command(
+		["git", "-C", str(clone_root), "submodule", "update", "--init", "--recursive"]
+	)
+
+
 def ensure_clone(
 	package: str,
 	dest_root: Path,
@@ -883,6 +896,7 @@ def ensure_clone(
 	branch: str | None = None,
 	subdir: str | None = None,
 	repo_fallbacks: list[tuple[str, str | None, str | None]] | None = None,
+	submodules: bool = False,
 ) -> Path:
 	dest_root.mkdir(parents=True, exist_ok=True)
 	package_dir = dest_root / package
@@ -953,7 +967,10 @@ def ensure_clone(
 					repo_url=repo_url,
 					branch=branch,
 					subdir=subdir,
+					submodules=submodules,
 				)
+		if submodules:
+			_init_submodules(package_dir)
 		return _resolve_package_dir(package_dir, subdir, package)
 
 	if package_dir.exists():
@@ -961,7 +978,10 @@ def ensure_clone(
 
 	if repo_url:
 		candidates = [(repo_url, branch, subdir), *(repo_fallbacks or [])]
-		return _clone_with_fallback(package_dir, candidates, package)
+		build = _clone_with_fallback(package_dir, candidates, package)
+		if submodules:
+			_init_submodules(package_dir)
+		return build
 
 	clone_cmd = ["git", "clone", *clone_extra]
 	if SHALLOW_CLONE:
@@ -970,6 +990,8 @@ def ensure_clone(
 	print(style(f"==> cloning from {remote_url}", DIM))
 	run_command(clone_cmd)
 
+	if submodules:
+		_init_submodules(package_dir)
 	return _resolve_package_dir(package_dir, subdir, package)
 
 
@@ -1653,6 +1675,7 @@ def install_package(
 	| None = None,
 	update_to: str | None = None,
 	verify: bool = False,
+	submodules: bool = False,
 ) -> None:
 	visited = visited or set()
 	if package in visited:
@@ -1679,7 +1702,9 @@ def install_package(
 	# Clone from the source chain or the AUR mirror (repo_url None), then read deps
 	# from the cloned .SRCINFO.
 	if sources is not None:
-		package_dir = _clone_any_source(package, dest_root, sources, refresh=refresh)
+		package_dir = _clone_any_source(
+			package, dest_root, sources, refresh=refresh, submodules=submodules
+		)
 	else:
 		package_dir = ensure_clone(
 			package,
@@ -1689,6 +1714,7 @@ def install_package(
 			branch=branch,
 			subdir=subdir,
 			repo_fallbacks=repo_fallbacks,
+			submodules=submodules,
 		)
 	if verify:
 		_verify_signature(package_dir, package, branch)
@@ -1721,6 +1747,7 @@ def install_package(
 			visited=visited,
 			preinstalled_official=preinstalled_official,
 			verify=verify,
+			submodules=submodules,
 		)
 
 	build_and_install(package_dir, noconfirm=noconfirm, refresh=refresh)
@@ -2677,9 +2704,12 @@ def fetch_package(
 	]
 	| None = None,
 	verify: bool = False,
+	submodules: bool = False,
 ) -> Path:
 	if sources is not None:
-		package_dir = _clone_any_source(package, dest_root, sources, refresh=refresh)
+		package_dir = _clone_any_source(
+			package, dest_root, sources, refresh=refresh, submodules=submodules
+		)
 	else:
 		package_dir = ensure_clone(
 			package,
@@ -2689,6 +2719,7 @@ def fetch_package(
 			branch=branch,
 			subdir=subdir,
 			repo_fallbacks=repo_fallbacks,
+			submodules=submodules,
 		)
 	if verify:
 		_verify_signature(package_dir, package, branch)
@@ -2768,6 +2799,11 @@ def build_parser() -> argparse.ArgumentParser:
 		action="store_true",
 		help="Require a valid GPG signature: verify-tag if HEAD is a tag, else verify-commit (no trust check)",
 	)
+	fetch_parser.add_argument(
+		"--submod",
+		action="store_true",
+		help="Init the repo's git submodules after checkout (git submodule update --init --recursive)",
+	)
 
 	install_parser = subparsers.add_parser(
 		"install", help="Resolve dependencies and build/install a package"
@@ -2796,6 +2832,11 @@ def build_parser() -> argparse.ArgumentParser:
 		"--verify",
 		action="store_true",
 		help="Require a valid GPG signature: verify-tag if HEAD is a tag, else verify-commit (no trust check)",
+	)
+	install_parser.add_argument(
+		"--submod",
+		action="store_true",
+		help="Init the repo's git submodules after checkout (git submodule update --init --recursive)",
 	)
 
 	remove_parser = subparsers.add_parser("remove", help="Remove an installed package")
@@ -3085,6 +3126,7 @@ def _clone_any_source(
 	],
 	*,
 	refresh: bool,
+	submodules: bool = False,
 ) -> Path:
 	# Walk the source chain in order; first that clones a dir holding a PKGBUILD wins.
 	# A source whose clone fails (404) or lacks the package (subdir-container miss) is
@@ -3104,6 +3146,7 @@ def _clone_any_source(
 				branch=branch,
 				subdir=subdir,
 				repo_fallbacks=fallbacks,
+				submodules=submodules,
 			)
 		except AurGitError as exc:
 			errors.append(f"{label}: {exc}")
@@ -3241,6 +3284,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 						subdir=subdir,
 						repo_fallbacks=repo_fallbacks,
 						verify=args.verify,
+						submodules=args.submod,
 					)
 				else:
 					fetch_package(
@@ -3249,6 +3293,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 						refresh=refresh,
 						sources=pkg_sources,
 						verify=args.verify,
+						submodules=args.submod,
 					)
 		elif args.command == "install":
 			# Share the dedup/official-dep state across every requested package so a
@@ -3267,6 +3312,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 						preinstalled_official=install_preinstalled,
 						sources=pkg_sources,
 						verify=args.verify,
+						submodules=args.submod,
 					)
 					continue
 				repo_url, branch, subdir, repo_fallbacks = pkg_sources[0]
@@ -3299,6 +3345,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 					subdir=subdir,
 					repo_fallbacks=repo_fallbacks,
 					verify=args.verify,
+					submodules=args.submod,
 				)
 		elif args.command == "remove":
 			if args.cache:

@@ -52,6 +52,7 @@ _grimoire() {
                         $global_opts \
                         $source_opts \
                         '--verify[Require a valid GPG signature (git verify-tag/-commit; no trust check)]' \
+                        '--submod[Init git submodules after checkout]' \
                         '1:package:_grimoire_aur_packages'
                     ;;
                 install)
@@ -60,6 +61,7 @@ _grimoire() {
                         $source_opts \
                         '--noconfirm[Skip confirmation prompts]' \
                         '--verify[Require a valid GPG signature (git verify-tag/-commit; no trust check)]' \
+                        '--submod[Init git submodules after checkout]' \
                         '1:package:_grimoire_aur_packages'
                     ;;
                 remove)

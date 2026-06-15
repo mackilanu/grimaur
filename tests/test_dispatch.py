@@ -58,6 +58,17 @@ class MultiPackageDispatchTests(unittest.TestCase):
 			self._main("fetch", "a", "--repo-url", URL)
 		self.assertFalse(fetch.call_args_list[0].kwargs["verify"])
 
+	def test_submod_flag_flows_to_workers(self) -> None:
+		with mock.patch.object(grimoire, "fetch_package") as fetch:
+			self._main("fetch", "a", "--repo-url", URL, "--submod")
+		self.assertTrue(fetch.call_args_list[0].kwargs["submodules"])
+		with mock.patch.object(grimoire, "install_package") as install:
+			self._main("install", "a", "--repo-url", URL, "--submod")
+		self.assertTrue(install.call_args_list[0].kwargs["submodules"])
+		with mock.patch.object(grimoire, "fetch_package") as fetch:
+			self._main("fetch", "a", "--repo-url", URL)
+		self.assertFalse(fetch.call_args_list[0].kwargs["submodules"])
+
 	def test_install_calls_worker_per_package_sharing_state(self) -> None:
 		with mock.patch.object(grimoire, "install_package") as install:
 			rc = self._main("install", "a", "b", "--repo-url", URL)

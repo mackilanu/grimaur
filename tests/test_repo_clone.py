@@ -681,5 +681,25 @@ class VerifyCommitTests(unittest.TestCase):
 			grimoire._verify_signature(self.repo, "foo")
 
 
+class SubmodulesTests(unittest.TestCase):
+	"""--submod: init submodules after checkout, gated on a .gitmodules at the root."""
+
+	def test_init_runs_when_gitmodules_present(self) -> None:
+		with tempfile.TemporaryDirectory() as d:
+			root = Path(d)
+			(root / ".gitmodules").write_text('[submodule "x"]\n\tpath = x\n')
+			with mock.patch.object(grimoire, "run_command") as rc:
+				grimoire._init_submodules(root)
+			rc.assert_called_once()
+			cmd = rc.call_args.args[0]
+			self.assertEqual(cmd[-4:], ["submodule", "update", "--init", "--recursive"])
+
+	def test_init_is_noop_without_gitmodules(self) -> None:
+		with tempfile.TemporaryDirectory() as d:
+			with mock.patch.object(grimoire, "run_command") as rc:
+				grimoire._init_submodules(Path(d))
+			rc.assert_not_called()
+
+
 if __name__ == "__main__":
 	unittest.main()

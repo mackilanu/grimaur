@@ -42,6 +42,7 @@ Also accepts: `SRCINFO`
 - `grimoire inspect <package>` shows description + all deps (make/check/optional)
 - `grimoire install <package>` clones the repo, resolves dependencies, builds with `makepkg`
    - Pass `--use-ssh` use SSH instead of HTTPS
+   - Pass `--submod` (install/fetch) to init the repo's git submodules after checkout. 
 - `grimoire remove <package>` to uninstall from pacman
    - Pass `--clone` to delete the package's clone too
    - `grimoire remove --cache` drops the search result cache
