@@ -3171,10 +3171,10 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 		parser.print_help()
 		return 0
 
-	# Seed a default repos.conf ([ARCH], AUR opt-in) the first time a source is
-	# resolved, so the default is the official repos rather than the built-in AUR.
-	if args.command in {"install", "fetch", "inspect", "search"}:
-		_ensure_repos_conf()
+	# Seed a default repos.conf ([ARCH] + AUR toggle) on first use, so every command sees
+	# the official default base. Idempotent: no-ops once the conf exists. Runs after the
+	# no-command/help return so a bare `grimoire` doesn't create a conf.
+	_ensure_repos_conf()
 
 	# fallback when /tmp is not writable, use our default + .tmp.
 	current_tmp = os.environ.get("TMPDIR") or "/tmp"  # noqa: S108 - standard TMPDIR default, writability checked below

@@ -65,7 +65,8 @@ jobs:
       # --- Custom repo (VUR): build grimoire-git from a custom source, before the AUR ---
       - name: Build grimoire-git from a custom repo (VUR)
         run: |
-          # scheme-less, subdir-per-pkg container alias; `repo` never auto-seeds a conf
+          # scheme-less, subdir-per-pkg container alias; `repo --add` seeds the default
+          # base ([ARCH] + AUR toggle) first, then appends [VUR]
           ./grimoire repo --add 'github.com/h8d13/VUR/tree/master/pkgs' VUR
           ./grimoire repo --ls
           ./grimoire install grimoire-git --repo VUR --noconfirm
