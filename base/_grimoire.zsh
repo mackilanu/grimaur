@@ -52,6 +52,7 @@ _grimoire() {
                         $global_opts \
                         $source_opts \
                         '--verify[Require a valid GPG signature (git verify-tag/-commit; no trust check)]' \
+                        '--min-trust[Implies --verify and require this owner-trust level]:level:(marginal fully ultimate)' \
                         '--submod[Init git submodules after checkout]' \
                         '1:package:_grimoire_aur_packages'
                     ;;
@@ -61,6 +62,7 @@ _grimoire() {
                         $source_opts \
                         '--noconfirm[Skip confirmation prompts]' \
                         '--verify[Require a valid GPG signature (git verify-tag/-commit; no trust check)]' \
+                        '--min-trust[Implies --verify and require this owner-trust level]:level:(marginal fully ultimate)' \
                         '--submod[Init git submodules after checkout]' \
                         '1:package:_grimoire_aur_packages'
                     ;;

@@ -42,7 +42,7 @@ Also accepts: `SRCINFO`
 - `grimoire inspect <package>` shows description + all deps (make/check/optional)
 - `grimoire install <package>` clones the repo, resolves dependencies, builds with `makepkg`
    - Pass `--use-ssh` use SSH instead of HTTPS
-   - Pass `--submod` (install/fetch) to init the repo's git submodules after checkout. 
+   - Pass `--submod` (install/fetch) to init the repo's git submodules after checkout.
 - `grimoire remove <package>` to uninstall from pacman
    - Pass `--clone` to delete the package's clone too
    - Pass `--cache` to drop the search result cache
@@ -72,14 +72,6 @@ Section order is precedence: `install`/`fetch`/`inspect`/`update` walk sections 
 bottom and build from the first that has the package. On first use, **auto-creates**
 `~/.config/grimoire/repos.conf` with `[ARCH]` as the default.
 
-### Cryptographic trust
-
-- Pass `--verify` (install/fetch) to require a valid GPG signature before building.
-If you point at an annotated tag (`--rev <tag>`) it runs `git verify-tag`:
-on either the passed `--ref` or latest HEAD commit.
-Aborts if the target is unsigned, has a bad signature, or the signer's key isn't in your keyring:
-`gpg --recv-keys <fingerprint>`. Checks signature validity, not key trust.
-
 ### Stay Updated
 
 - `grimoire update` rebuilds every installed “foreign” package that has a newer release.
@@ -101,10 +93,29 @@ Aborts if the target is unsigned, has a bad signature, or the signer's key isn't
    - `grimoire inspect <pkg> --plain` pacman `-Si` style `Key : Value` output for scripting
    - `grimoire list --repo <name>` lists every package in a repo `REPO Pkg Version`
 
-### Details
+<details>
+
+### More info
+
 - Respects `IgnorePkg = x y z` from `/etc/pacman.conf`
 - Pass `--noconfirm` to skip prompts (install, update, remove, and search)
 - Completions are also [available](./base/) and have cached search complete.
+
+### Cryptographic trust
+
+- Pass `--verify` (`install`/`fetch`) to require a valid GPG signature before building.
+If you point at an annotated tag (`--rev <tag>`) it runs `git verify-tag`, else `git verify-commit`
+on the checked-out HEAD commit.
+
+- Aborts if the target is unsigned, has a bad signature, or the signer's key isn't in your keyring:
+`gpg --recv-keys <fingerprint>`.
+
+- By default this checks signature *validity*, not key *trust* (a good signature from any key you
+hold passes). To also gate on owner-trust, pass `--min-trust <level>` (implies `--verify`) at one of
+3 levels: `marginal`, `fully`, or `ultimate`. Establish trust first (`gpg --edit-key <fpr>` → `trust`,
+or import ownertrust); a freshly received key is untrusted and will be rejected.
+
+<details/>
 
 ---
 

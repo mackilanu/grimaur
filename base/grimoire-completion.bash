@@ -37,10 +37,10 @@ _grimoire_completion()
 
         case "$subcmd" in
             fetch)
-                opts="$global_opts --verify --repo-url --repo --subdir --rev --submod"
+                opts="$global_opts --verify --min-trust --repo-url --repo --subdir --rev --submod"
                 ;;
             install)
-                opts="$global_opts --noconfirm --verify --repo-url --repo --subdir --rev --submod"
+                opts="$global_opts --noconfirm --verify --min-trust --repo-url --repo --subdir --rev --submod"
                 ;;
             remove)
                 opts="$global_opts --noconfirm --clone --cache"
@@ -79,6 +79,12 @@ _grimoire_completion()
     # Handle --limit value completion (just suggest some numbers)
     if [[ "$prev" == "--limit" ]]; then
         mapfile -t COMPREPLY < <(compgen -W "10 20 50 100" -- "$cur")
+        return 0
+    fi
+
+    # Handle --min-trust value completion (owner-trust levels)
+    if [[ "$prev" == "--min-trust" ]]; then
+        mapfile -t COMPREPLY < <(compgen -W "marginal fully ultimate" -- "$cur")
         return 0
     fi
 

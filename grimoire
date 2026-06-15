@@ -1150,27 +1150,40 @@ def _ref_is_annotated_tag(package_dir: Path, ref: str) -> bool:
 	return str(out).strip() == "tag"
 
 
-def _verify_signature(package_dir: Path, package: str, ref: str | None = None) -> None:
+def _verify_signature(
+	package_dir: Path,
+	package: str,
+	ref: str | None = None,
+	min_trust: str | None = None,
+) -> None:
 	# `--verify`: require a cryptographically valid GPG signature from a key in the caller's
 	# keyring. When the requested ref is an annotated tag, verify that tag (covers projects
-	# that sign releases, not every commit); otherwise verify the HEAD commit. Either way
+	# that sign releases, not every commit); otherwise verify the HEAD commit. By default
 	# this checks signature validity, NOT key trust -- a good signature from any held key
-	# passes (gpg only warns). Fails on an unsigned target, a missing public key, or a bad
-	# signature. git's own "Good signature"/error lines stream through.
+	# passes (gpg only warns). With min_trust set (--min-trust), gpg.minTrustLevel makes git
+	# also reject a valid signature whose owner-trust is below that level (the user must have
+	# established that trust first). Fails on an unsigned target, a missing public key, a bad
+	# signature, or insufficient trust. git's own "Good signature"/error lines stream through.
+	prefix = ["git"]
+	if min_trust:
+		prefix += ["-c", f"gpg.minTrustLevel={min_trust}"]
+	prefix += ["-C", str(package_dir)]
 	if ref and _ref_is_annotated_tag(package_dir, ref):
-		cmd = ["git", "-C", str(package_dir), "verify-tag", ref]
+		cmd = [*prefix, "verify-tag", ref]
 		target = f"tag {ref}"
 		print(style(f"==> git verify-tag {ref} ({package})", DIM))
 	else:
-		cmd = ["git", "-C", str(package_dir), "verify-commit", "HEAD"]
+		cmd = [*prefix, "verify-commit", "HEAD"]
 		target = "the HEAD commit"
 		print(style(f"==> git verify-commit HEAD ({package})", DIM))
 	try:
 		run_command(cmd)
 	except AurGitError as exc:
+		reason = "is unsigned, has a bad signature, or the signer's key is not in your GPG keyring"
+		if min_trust:
+			reason += f", or its key is not trusted to level '{min_trust}'"
 		raise AurGitError(
-			f"signature verification failed for '{package}': {target} is unsigned, has a "
-			"bad signature, or the signer's key is not in your GPG keyring"
+			f"signature verification failed for '{package}': {target} {reason}"
 		) from exc
 
 
@@ -1675,6 +1688,7 @@ def install_package(
 	| None = None,
 	update_to: str | None = None,
 	verify: bool = False,
+	min_trust: str | None = None,
 	submodules: bool = False,
 ) -> None:
 	visited = visited or set()
@@ -1717,7 +1731,7 @@ def install_package(
 			submodules=submodules,
 		)
 	if verify:
-		_verify_signature(package_dir, package, branch)
+		_verify_signature(package_dir, package, branch, min_trust)
 	_, pkgdesc, deps = parse_dependencies(read_srcinfo(package_dir))
 	print(f"==> {package}: {pkgdesc}" if pkgdesc else f"==> {package}")
 
@@ -1747,6 +1761,7 @@ def install_package(
 			visited=visited,
 			preinstalled_official=preinstalled_official,
 			verify=verify,
+			min_trust=min_trust,
 			submodules=submodules,
 		)
 
@@ -2704,6 +2719,7 @@ def fetch_package(
 	]
 	| None = None,
 	verify: bool = False,
+	min_trust: str | None = None,
 	submodules: bool = False,
 ) -> Path:
 	if sources is not None:
@@ -2722,7 +2738,7 @@ def fetch_package(
 			submodules=submodules,
 		)
 	if verify:
-		_verify_signature(package_dir, package, branch)
+		_verify_signature(package_dir, package, branch, min_trust)
 	print(f"Package fetched to {package_dir}")
 	return package_dir
 
@@ -2800,6 +2816,11 @@ def build_parser() -> argparse.ArgumentParser:
 		help="Require a valid GPG signature: verify-tag if HEAD is a tag, else verify-commit (no trust check)",
 	)
 	fetch_parser.add_argument(
+		"--min-trust",
+		choices=("marginal", "fully", "ultimate"),
+		help="Implies --verify and also require the signer's key to be trusted to this level (you must set ownertrust first)",
+	)
+	fetch_parser.add_argument(
 		"--submod",
 		action="store_true",
 		help="Init the repo's git submodules after checkout (git submodule update --init --recursive)",
@@ -2832,6 +2853,11 @@ def build_parser() -> argparse.ArgumentParser:
 		"--verify",
 		action="store_true",
 		help="Require a valid GPG signature: verify-tag if HEAD is a tag, else verify-commit (no trust check)",
+	)
+	install_parser.add_argument(
+		"--min-trust",
+		choices=("marginal", "fully", "ultimate"),
+		help="Implies --verify and also require the signer's key to be trusted to this level (you must set ownertrust first)",
 	)
 	install_parser.add_argument(
 		"--submod",
@@ -3283,7 +3309,8 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 						branch=branch,
 						subdir=subdir,
 						repo_fallbacks=repo_fallbacks,
-						verify=args.verify,
+						verify=args.verify or bool(args.min_trust),
+						min_trust=args.min_trust,
 						submodules=args.submod,
 					)
 				else:
@@ -3292,7 +3319,8 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 						dest_root,
 						refresh=refresh,
 						sources=pkg_sources,
-						verify=args.verify,
+						verify=args.verify or bool(args.min_trust),
+						min_trust=args.min_trust,
 						submodules=args.submod,
 					)
 		elif args.command == "install":
@@ -3311,7 +3339,8 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 						visited=install_visited,
 						preinstalled_official=install_preinstalled,
 						sources=pkg_sources,
-						verify=args.verify,
+						verify=args.verify or bool(args.min_trust),
+						min_trust=args.min_trust,
 						submodules=args.submod,
 					)
 					continue
@@ -3344,7 +3373,8 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 					branch=branch,
 					subdir=subdir,
 					repo_fallbacks=repo_fallbacks,
-					verify=args.verify,
+					verify=args.verify or bool(args.min_trust),
+					min_trust=args.min_trust,
 					submodules=args.submod,
 				)
 		elif args.command == "remove":

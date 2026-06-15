@@ -53,6 +53,7 @@ complete -c grimoire -n '__fish_seen_subcommand_from install remove update searc
 
 # --verify (fetch / install)
 complete -c grimoire -n '__fish_seen_subcommand_from fetch install' -l verify -d 'Require a valid GPG signature (git verify-tag/-commit; no trust check)'
+complete -c grimoire -n '__fish_seen_subcommand_from fetch install' -l min-trust -x -a 'marginal fully ultimate' -d 'Implies --verify and require this owner-trust level'
 complete -c grimoire -n '__fish_seen_subcommand_from fetch install' -l submod -d 'Init git submodules after checkout (git submodule update --init --recursive)'
 
 # remove

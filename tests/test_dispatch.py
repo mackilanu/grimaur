@@ -58,6 +58,19 @@ class MultiPackageDispatchTests(unittest.TestCase):
 			self._main("fetch", "a", "--repo-url", URL)
 		self.assertFalse(fetch.call_args_list[0].kwargs["verify"])
 
+	def test_min_trust_implies_verify(self) -> None:
+		# --min-trust alone turns on verification and carries the level through.
+		with mock.patch.object(grimoire, "install_package") as install:
+			self._main("install", "a", "--repo-url", URL, "--min-trust", "fully")
+		kw = install.call_args_list[0].kwargs
+		self.assertEqual(kw["min_trust"], "fully")
+		self.assertTrue(kw["verify"])
+		with mock.patch.object(grimoire, "fetch_package") as fetch:
+			self._main("fetch", "a", "--repo-url", URL, "--min-trust", "marginal")
+		kw = fetch.call_args_list[0].kwargs
+		self.assertEqual(kw["min_trust"], "marginal")
+		self.assertTrue(kw["verify"])
+
 	def test_submod_flag_flows_to_workers(self) -> None:
 		with mock.patch.object(grimoire, "fetch_package") as fetch:
 			self._main("fetch", "a", "--repo-url", URL, "--submod")

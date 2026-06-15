@@ -680,6 +680,19 @@ class VerifyCommitTests(unittest.TestCase):
 		with mock.patch.object(grimoire, "run_command", return_value=""):
 			grimoire._verify_signature(self.repo, "foo")
 
+	def test_min_trust_adds_gpg_config(self) -> None:
+		with mock.patch.object(grimoire, "run_command", return_value="") as rc:
+			grimoire._verify_signature(self.repo, "foo", None, "fully")
+		cmd = rc.call_args_list[-1].args[0]
+		self.assertIn("verify-commit", cmd)
+		self.assertIn("gpg.minTrustLevel=fully", cmd)
+
+	def test_no_min_trust_omits_gpg_config(self) -> None:
+		with mock.patch.object(grimoire, "run_command", return_value="") as rc:
+			grimoire._verify_signature(self.repo, "foo")
+		cmd = rc.call_args_list[-1].args[0]
+		self.assertFalse(any("minTrustLevel" in part for part in cmd))
+
 
 class SubmodulesTests(unittest.TestCase):
 	"""--submod: init submodules after checkout, gated on a .gitmodules at the root."""
