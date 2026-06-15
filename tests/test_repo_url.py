@@ -105,6 +105,30 @@ PARSE_CASES = {
 		"dev",
 		"aur/bar",
 	),
+	# Forgejo (self-hosted, Gitea scheme): the /src/{branch,tag,commit} handler is
+	# host-agnostic, so any Forgejo/Gitea host works without special-casing.
+	"https://v15.next.forgejo.org/o/r/src/branch/main/pkgs/foo": (
+		"https://v15.next.forgejo.org/o/r.git",
+		"main",
+		"pkgs/foo",
+	),
+	"https://v15.next.forgejo.org/o/r/src/tag/v2": (
+		"https://v15.next.forgejo.org/o/r.git",
+		"v2",
+		None,
+	),
+	# Bitbucket Cloud: /src/<ref>/<path> -- ref directly after the marker, no
+	# branch/tag/commit segment (distinct from the Gitea scheme).
+	"https://bitbucket.org/ws/repo/src/main/pkgs/foo": (
+		"https://bitbucket.org/ws/repo.git",
+		"main",
+		"pkgs/foo",
+	),
+	"https://bitbucket.org/ws/repo/raw/main/pkg/PKGBUILD": (
+		"https://bitbucket.org/ws/repo.git",
+		"main",
+		"pkg",
+	),
 }
 
 # URLs with no recognizable directory marker pass through untouched.

@@ -51,7 +51,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
 	from collections.abc import Callable, Iterable, Iterator, Sequence
 
-
+__appname__ = "grimoire"
 __version__ = "dev"
 
 
@@ -62,7 +62,6 @@ CYAN = "\033[36m"
 YELLOW = "\033[33m"
 RED = "\033[31m"
 DIM = "\033[2m"
-
 USE_COLOR = False
 
 
@@ -70,8 +69,6 @@ GITHUB_RAW_BASE = "https://raw.githubusercontent.com/archlinux/aur"
 _VCS_SUFFIXES = ("-git", "-vcs", "-svn", "-hg", "-bzr", "-darcs", "-cvs")
 _COMMON_AUR_SUFFIXES = ("-bin",)
 
-# Optional git-mirror override from the [AUR] section in repos.conf; None = default.
-AUR_GIT_MIRROR: str | None = None
 USE_SSH = False
 SHALLOW_CLONE = False
 DEBUG = os.environ.get("DEBUG", "").lower() in ("1", "true", "yes")
@@ -82,7 +79,7 @@ CACHE_TTL = 3600
 
 
 _INSTALLED_CACHE: set[str] | None = None
-_ELEV_TOOLS = ("sudo", "doas", "run0", "su")
+_ELEV_TOOLS = ("sudo", "doas", "run0", "su")  # order matters here
 _GLOBAL_VALUE_OPTIONS = {"--dest-root"}
 
 
@@ -90,14 +87,10 @@ _PACMAN_AUTH_RE = re.compile(r'^\s*PACMAN_AUTH\s*=\s*\(?\s*"?([^"\s)]+)"?')
 _PACMAN_DBPATH_RE = re.compile(r"^\s*DBPath\s*=\s*(\S+)")
 _DEP_SPLIT_RE = re.compile(r"[<>~=]+")
 _DESC_FIELD_RE = re.compile(r"%(\w+)%\n([^\n]*)")
-# Official Arch repos -- those the Arch GitLab packaging covers, so a sync-DB
-# search result from one is buildable from source via {pkgbase}. Third-party
-# repos (cachyos, ...) have no recipe and are excluded from the templated search.
+# Third-party repos (cachyos, ...) have no recipe, exclude from the templated search.
 _OFFICIAL_REPO_RE = re.compile(
 	r"^(core|extra|multilib)(-testing|-staging)?$|^(gnome|kde)-unstable$"
 )
-
-
 _HOSTISH_RE = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)+$", re.IGNORECASE)
 
 
@@ -121,17 +114,22 @@ _GLOBAL_FLAG_OPTIONS = {
 	"-v",
 }
 
-# Map of hosts to the SSH user used by their git endpoint.
-# --use-ssh rewrites https://<host>/<path> -> ssh://<user>@<host>/<path>(.git)
-# Useful for --repo-url too, when the URL host is in this map.
+# SSH user overrides per host. --use-ssh rewrites https://<host>/<path> ->
+# ssh://<user>@<host>/<path>(.git); an unlisted host defaults to user "git" (the universal
+# forge convention -- GitHub/GitLab/Gitea/Forgejo/Bitbucket all use it), so the only entry
+# strictly needed is a host whose user differs (aur.archlinux.org -> "aur"). The listed
+# hosts are also mirrored as child-process insteadOf rules (which the git@-default cannot
+# cover), so the common forges stay enumerated here.
 SSH_REWRITE_HOSTS = {
 	"github.com": "git",
 	"gitlab.com": "git",
 	"codeberg.org": "git",
+	"bitbucket.org": "git",
 	"aur.archlinux.org": "aur",
 }
 
 
+_CONF_NAME = "repos.conf"
 # Written on first use when no repos.conf exists. Default source is [ARCH] (build
 # official packages from source); the AUR is opt-in (commented out).
 _DEFAULT_REPOS_CONF = """\
@@ -195,7 +193,7 @@ class AurGitError(RuntimeError):
 
 
 def get_aur_remote() -> str:
-	url = AUR_GIT_MIRROR or "https://github.com/archlinux/aur.git"
+	url = "https://github.com/archlinux/aur.git"
 	return _remote_for(url)
 
 
@@ -303,7 +301,7 @@ def _sync_db_packages() -> tuple[tuple[str, str | None, str | None, str], ...]:
 	# Every package in the pacman sync DBs as (name, version, desc, repo). The index
 	# for the {pkgbase} templated search (the Arch GitLab has no listing). repo is the
 	# DB name (core/extra/cachyos/...) so results read like `pacman -Ss`; official
-	# repos build from the alias's source, third-party repos install via pacman -S
+	# repos build from the alias's source, third-party repos are skipped through RE.
 	# (see the search install loop). Every repo copy is listed (no dedup). gzip + zstd.
 	out: list[tuple[str, str | None, str | None, str]] = []
 	for repo, fields in _iter_sync_db_desc():
@@ -348,11 +346,11 @@ def _elevate(cmd: list[str]) -> list[str]:
 
 def _maybe_ssh_rewrite(url: str) -> str:
 	parsed = urllib.parse.urlparse(url)
-	if parsed.scheme not in ("http", "https"):
+	if parsed.scheme not in ("http", "https") or not parsed.netloc:
 		return url
-	user = SSH_REWRITE_HOSTS.get(parsed.netloc)
-	if user is None:
-		return url
+	# Default to user "git" for any forge (Forgejo/Gitea/Bitbucket/...); only a host with
+	# a non-git ssh user needs a SSH_REWRITE_HOSTS override (e.g. aur.archlinux.org).
+	user = SSH_REWRITE_HOSTS.get(parsed.netloc, "git")
 	path = parsed.path.lstrip("/").rstrip("/")
 	if not path:
 		return f"ssh://{user}@{parsed.netloc}"
@@ -431,7 +429,15 @@ def parse_repo_url(url: str) -> tuple[str, str | None, str | None]:
 		d = parts.index("-")
 		if d >= 2 and len(parts) > d + 2 and parts[d + 1] in ("tree", "blob", "raw"):
 			return _rebuild(parts[:d], parts[d + 2], parts[d + 3 :])
-	# Gitea/Codeberg: /<owner>/<repo>/{src,raw}/{branch,tag,commit}/<ref>/<subpath...>
+	# Bitbucket Cloud: /<workspace>/<repo>/{src,raw}/<ref>/<subpath...> (ref directly
+	# after the marker, no branch/tag/commit segment -- distinct from Gitea below).
+	if parsed.netloc == "bitbucket.org":
+		for marker in ("src", "raw"):
+			if marker in parts:
+				i = parts.index(marker)
+				if i >= 2 and len(parts) > i + 1:
+					return _rebuild(parts[:i], parts[i + 1], parts[i + 2 :])
+	# Gitea/Codeberg/Forgejo: /<owner>/<repo>/{src,raw}/{branch,tag,commit}/<ref>/<subpath...>
 	for marker in ("src", "raw"):
 		if marker in parts:
 			i = parts.index(marker)
@@ -446,7 +452,7 @@ def parse_repo_url(url: str) -> tuple[str, str | None, str | None]:
 
 
 def _repo_registry_path() -> Path:
-	return _xdg_config_home() / "grimoire" / "repos.conf"
+	return _xdg_config_home() / __appname__ / _CONF_NAME
 
 
 def _ensure_repos_conf() -> None:
@@ -2680,10 +2686,10 @@ def build_parser() -> argparse.ArgumentParser:
 		"-v",
 		"--version",
 		action="version",
-		version=f"grimoire {__version__} - MIT 2026.",
+		version=f"{__appname__} {__version__} - MIT 2026.",
 		help="Show version and exit",
 	)
-	default_dest = str(Path(os.environ.get("XDG_CACHE_HOME", "~/.cache")) / "grimoire")
+	default_dest = str(Path(os.environ.get("XDG_CACHE_HOME", "~/.cache")) / __appname__)
 	parser.add_argument(
 		"--dest-root",
 		default=default_dest,

@@ -11,10 +11,11 @@ source=(
 	"git+https://github.com/foo/bar.git"
 	"git+https://gitlab.com/baz/qux.git"
 	"git+https://codeberg.org/abc/def.git"
+	"git+https://bitbucket.org/ws/repo.git"
 	"git+https://aur.archlinux.org/some-pkg.git"
 	"git+https://example.com/not-rewritten.git"
 )
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
 	:

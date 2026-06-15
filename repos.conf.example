@@ -34,9 +34,10 @@
 
 # 4) Branch-per-package -- one package per branch; put {pkg} IN the branch of a tree URL.
 #    A bare repo URL does NOT do this (it just clones the default branch). Forge forms:
-#      github:   github.com/u/r/tree/{pkg}
-#      gitlab:   gitlab.com/u/r/-/tree/{pkg}        (GitLab needs the /-/ )
-#      codeberg: codeberg.org/u/r/src/branch/{pkg}
+#      github:           github.com/u/r/tree/{pkg}
+#      gitlab:           gitlab.com/u/r/-/tree/{pkg}        (GitLab needs the /-/ )
+#      gitea/forgejo:    host/u/r/src/branch/{pkg}          (codeberg, self-hosted, ...)
+#      bitbucket:        bitbucket.org/u/r/src/{pkg}        (ref straight after /src/)
 #[XUR]
 #  gitlab.com/myuser/myaur/-/tree/{pkg}
 

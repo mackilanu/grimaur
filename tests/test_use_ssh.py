@@ -24,11 +24,20 @@ def _source_urls(pkgbuild: Path) -> list[str]:
 	return urls
 
 
-EXPECTED = {
+# Inline rewrite (grimoire's own clone): EVERY http(s) host rewrites -- a mapped host
+# uses its override user, an unmapped host (example.com) defaults to git@.
+INLINE = {
 	"https://github.com/foo/bar.git": "ssh://git@github.com/foo/bar.git",
 	"https://gitlab.com/baz/qux.git": "ssh://git@gitlab.com/baz/qux.git",
 	"https://codeberg.org/abc/def.git": "ssh://git@codeberg.org/abc/def.git",
+	"https://bitbucket.org/ws/repo.git": "ssh://git@bitbucket.org/ws/repo.git",
 	"https://aur.archlinux.org/some-pkg.git": "ssh://aur@aur.archlinux.org/some-pkg.git",
+	"https://example.com/not-rewritten.git": "ssh://git@example.com/not-rewritten.git",
+}
+# Child-process insteadOf (makepkg source fetches): only mapped hosts get a rule, so an
+# unmapped host stays https.
+ENV = {
+	**{u: v for u, v in INLINE.items() if "example.com" not in u},
 	"https://example.com/not-rewritten.git": "https://example.com/not-rewritten.git",
 }
 
@@ -41,10 +50,16 @@ class SSHRewriteTests(unittest.TestCase):
 			self.assertIn(host, hosts, f"fixture missing source for {host}")
 
 	def test_per_url_python_rewrite(self) -> None:
-		# grimoire's own outer-clone rewrite what _maybe_ssh_rewrite produces.
+		# grimoire's own outer-clone rewrite: _maybe_ssh_rewrite rewrites every host.
 		for url in _source_urls(FIXTURE):
 			with self.subTest(url=url):
-				self.assertEqual(grimoire._maybe_ssh_rewrite(url), EXPECTED[url])
+				self.assertEqual(grimoire._maybe_ssh_rewrite(url), INLINE[url])
+
+	def test_unmapped_host_defaults_to_git_user(self) -> None:
+		self.assertEqual(
+			grimoire._maybe_ssh_rewrite("https://v15.next.forgejo.org/o/r.git"),
+			"ssh://git@v15.next.forgejo.org/o/r.git",
+		)
 
 	def _isolated_env(self) -> dict[str, str]:
 		# Strip user/system git config so tests aren't poisoned by personal
@@ -74,7 +89,7 @@ class SSHRewriteTests(unittest.TestCase):
 	def test_git_actually_rewrites_with_env(self) -> None:
 		# End-to-end: ask git to resolve a URL via the env-injected insteadOf.
 		# `git ls-remote --get-url` echoes the post-rewrite URL without networking.
-		for url, expected in EXPECTED.items():
+		for url, expected in ENV.items():
 			result = subprocess.run(
 				["git", "ls-remote", "--get-url", url],
 				env=self._isolated_env(),
