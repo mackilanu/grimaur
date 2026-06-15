@@ -2703,6 +2703,7 @@ def inspect_package(
 	_print_info_summary(package, pkgdesc, deps)
 
 
+##################
 def fetch_package(
 	package: str,
 	dest_root: Path,
