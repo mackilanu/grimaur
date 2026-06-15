@@ -81,6 +81,9 @@ bottom and build from the first that has the package. On first use, **auto-creat
 
 `update` re-pulls every tracked package already; no `--refresh` needed.
 
+<details>
+<summary>Additional Options</summary>
+
 ### Additional Options
 
 - Useful to build in `tmp/` pass `--dest-root` - (default: `$XDG_CACHE_HOME/grimoire`)
@@ -93,7 +96,10 @@ bottom and build from the first that has the package. On first use, **auto-creat
    - `grimoire inspect <pkg> --plain` pacman `-Si` style `Key : Value` output for scripting
    - `grimoire list --repo <name>` lists every package in a repo `REPO Pkg Version`
 
+</details>
+
 <details>
+<summary>More info & cryptographic trust</summary>
 
 ### More info
 
@@ -115,7 +121,7 @@ hold passes). To also gate on owner-trust, pass `--min-trust <level>` (implies `
 3 levels: `marginal`, `fully`, or `ultimate`. Establish trust first (`gpg --edit-key <fpr>` → `trust`,
 or import ownertrust); a freshly received key is untrusted and will be rejected.
 
-<details/>
+</details>
 
 ---
 
