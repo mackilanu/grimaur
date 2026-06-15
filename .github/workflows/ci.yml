@@ -91,7 +91,7 @@ jobs:
 
       - name: Build from [ARCH] official repo
         run: |
-          ./grimoire install fastfetch --no-interactive && fastfetch
+          ./grimoire install fastfetch --noconfirm && fastfetch
 
       - name: Test --use-ssh rewrites URLs (clone fails, but rewrite worked)
         env:
