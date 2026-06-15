@@ -421,6 +421,20 @@ class SparseCloneTests(unittest.TestCase):
 		self.assertEqual(build, dest / "foo" / "pkgs" / "foo")
 		self.assertFalse((dest / "foo" / "pkgs" / "bar").exists())
 
+	def test_subdir_container_miss_hints_subdir(self) -> None:
+		# Forgot --subdir on a container -> the error names the dir to pass.
+		src = self.root / "cont2"
+		(src / "pkgs" / "foo").mkdir(parents=True)
+		(src / "pkgs" / "foo" / "PKGBUILD").write_text("pkgname=foo\npkgver=1\n")
+		_git(src, "init", "-q", "-b", "master")
+		_git(src, "add", "-A")
+		_git(src, "commit", "-qm", "x")
+		with self.assertRaises(grimoire.AurGitError) as ctx:
+			grimoire.ensure_clone(
+				"foo", self.root / "d_miss", refresh=False, repo_url=f"file://{src}"
+			)
+		self.assertIn("--subdir pkgs", str(ctx.exception))
+
 	def test_solo_repo_checks_out_whole_tree(self) -> None:
 		# PKGBUILD at the root -> not a container; the whole tree (incl. sibling dirs)
 		# must survive, so no sparse narrowing.
@@ -439,6 +453,35 @@ class SparseCloneTests(unittest.TestCase):
 		self.assertEqual(build, dest / "foo")
 		self.assertTrue((build / "PKGBUILD").is_file())
 		self.assertTrue((build / "data" / "patch.diff").is_file())
+
+	def test_branch_per_package_builds_from_branch_root(self) -> None:
+		# Branch-per-package: a branch per package, PKGBUILD at the branch ROOT. Resolving
+		# --rev {pkg} -> branch <pkg> (see test_ref_templates_*); here the resolved branch
+		# clones and builds from its root (no subdir), picking the package by branch.
+		src = self.root / "bpp"
+		src.mkdir()
+		_git(src, "init", "-q", "-b", "main")
+		(src / "PKGBUILD").write_text("pkgname=placeholder\npkgver=1\n")
+		_git(src, "add", "-A")
+		_git(src, "commit", "-qm", "init")
+		for name in ("foo", "bar"):
+			_git(src, "checkout", "-q", "-b", name, "main")
+			(src / "PKGBUILD").write_text(f"pkgname={name}\npkgver=1\n")
+			_git(src, "add", "-A")
+			_git(src, "commit", "-qm", name)
+		_git(src, "checkout", "-q", "main")
+		for name in ("foo", "bar"):
+			build = grimoire.ensure_clone(
+				name,
+				self.root / f"d_{name}",
+				refresh=False,
+				repo_url=f"file://{src}",
+				branch=name,
+			)
+			pkgname = (
+				(build / "PKGBUILD").read_text().split("pkgname=")[1].split("\n")[0]
+			)
+			self.assertEqual(pkgname, name)
 
 
 class FlatRepoSearchTests(unittest.TestCase):

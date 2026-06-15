@@ -757,6 +757,25 @@ def _build_subpath(
 	return None
 
 
+def _subdir_hint(package_dir: Path, ref: str, package: str) -> str | None:
+	# On a no-PKGBUILD miss, look one level down: a subdir-container holds <dir>/<pkg>/
+	# PKGBUILD. Returns the container dir to suggest via --subdir, or None. Bounded to the
+	# top-level dirs (one ls-tree each), never a recursive scan -- so a tree:0 clone stays
+	# cheap even on a big monorepo.
+	try:
+		out = run_command(
+			["git", "-C", str(package_dir), "ls-tree", "-d", "--name-only", ref],
+			capture=True,
+		)
+	except AurGitError:
+		return None
+	for line in str(out).splitlines():
+		top = line.strip()
+		if top and _tree_has(package_dir, ref, f"{top}/{package}/PKGBUILD"):
+			return top
+	return None
+
+
 def _clone_with_fallback(
 	package_dir: Path,
 	candidates: Sequence[tuple[str, str | None, str | None]],
@@ -789,7 +808,12 @@ def _clone_with_fallback(
 			if want is None and not _tree_has(package_dir, ref, "PKGBUILD"):
 				# No package subtree and no root PKGBUILD -> this mirror lacks the
 				# package. Skip before any checkout (a monorepo miss stays cheap).
-				raise AurGitError(f"no PKGBUILD for '{package}'")
+				# If it's actually a subdir-container, point at the right --subdir.
+				hint = _subdir_hint(package_dir, ref, package)
+				msg = f"no PKGBUILD for '{package}'"
+				if hint and hint != subdir:
+					msg += f" (found under {hint}/ -- pass --subdir {hint})"
+				raise AurGitError(msg)
 			if want:
 				run_command(
 					["git", "-C", str(package_dir), "sparse-checkout", "set", want]
@@ -2963,19 +2987,25 @@ def _resolve_repo_for_package(
 	else:
 		return None, branch, subdir, []
 
+	def _sub(value: str | None) -> str | None:
+		# Substitute `{pkg}`/`{pkgbase}` so one alias can template per package. In the URL
+		# path it selects a repo-per-package forge (e.g. the Arch GitLab); in the ref it
+		# selects a branch-per-package layout over ANY transport (e.g. `--rev {pkg}` on a
+		# bare SSH URL, where the forge `tree/{pkg}` shorthand isn't available). `{pkgbase}`
+		# resolves to the pkgbase first, so split packages (amd-ucode -> linux-firmware)
+		# hit the right repo/branch.
+		if not (value and package):
+			return value
+		if "{pkgbase}" in value:
+			value = value.replace("{pkgbase}", _resolve_pkgbase(package))
+		if "{pkg}" in value:
+			value = value.replace("{pkg}", package)
+		return value
+
 	def _resolve(raw: str) -> tuple[str, str | None, str | None]:
-		# `{pkg}` lets one alias serve a whole repo-per-package forge (e.g. the
-		# Arch GitLab): the package name selects the repo, like it selects a
-		# branch on the AUR mirror. `{pkgbase}` resolves the name to its pkgbase
-		# first, so split packages (amd-ucode -> linux-firmware) hit the right repo.
-		if package:
-			if "{pkgbase}" in raw:
-				raw = raw.replace("{pkgbase}", _resolve_pkgbase(package))
-			if "{pkg}" in raw:
-				raw = raw.replace("{pkg}", package)
-		clone_url, parsed_branch, parsed_subdir = parse_repo_url(raw)
-		# Explicit flags win over whatever the URL encoded.
-		return clone_url, branch or parsed_branch, subdir or parsed_subdir
+		clone_url, parsed_branch, parsed_subdir = parse_repo_url(_sub(raw) or raw)
+		# Explicit flags (templated too) win over whatever the URL encoded.
+		return clone_url, _sub(branch) or parsed_branch, _sub(subdir) or parsed_subdir
 
 	primary_url, primary_branch, primary_subdir = _resolve(urls[0])
 	fallbacks = [_resolve(raw) for raw in urls[1:]]

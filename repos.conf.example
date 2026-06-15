@@ -17,23 +17,24 @@
 [ARCH]
   https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git
 
-# 1) Single package -- PKGBUILD at the repo root (auto-descends into <pkg>/ if the root
-#    has none). For a one-off you can also just pass --repo-url <url> instead of an alias.
+# 1) Single package -- PKGBUILD at the repo root (or <pkg>/, auto-descended). For a one-off
+#    just use --repo-url <url> instead of registering an alias.
 #[SOLO]
 #  github.com/myuser/my-pkg
 
-# 2) Flat -- many package dirs at the repo ROOT, no container subdir (descends to <pkg>/,
-#    like the subdir form but rooted). search clones once to list them (single-branch
-#    repos). Real example: github.com/kth5/archpower
+# 2) Flat -- one dir per package at the repo ROOT (builds <pkg>/). Real example:
+#    github.com/kth5/archpower
 #[FLAT]
 #  github.com/kth5/archpower
 
-# 3) Subdir-container -- one dir per package under a subdir (descends to <subdir>/<pkg>).
+# 3) Subdir-container -- one dir per package under a shared <subdir> (builds <subdir>/<pkg>).
+#    A tree URL encodes the dir; a bare URL needs --subdir.
 #[VUR]
 #  https://github.com/h8d13/VUR/tree/master/pkgs
 
 # 4) Branch-per-package -- one package per branch; put {pkg} IN the branch of a tree URL.
-#    A bare repo URL does NOT do this (it just clones the default branch). Forge forms:
+#    A bare URL line just clones the default branch; `--rev {pkg}` does it per command on
+#    any URL. Forge forms:
 #      github:           github.com/u/r/tree/{pkg}
 #      gitlab:           gitlab.com/u/r/-/tree/{pkg}        (GitLab needs the /-/ )
 #      gitea/forgejo:    host/u/r/src/branch/{pkg}          (codeberg, self-hosted, ...)
@@ -49,6 +50,13 @@
 #[MIRRORED]
 #  github.com/myuser/myaur/tree/master/pkgs
 #  codeberg.org/myuser/myaur/tree/master/pkgs
+
+# 7) Bare repos -- any git-cloneable URL works as-is (private/self-hosted). No tree/<ref> in
+#    the URL to parse, so scope with --rev / --subdir (--rev {pkg} = branch-per-package).
+#    scp-form has no port field; use ssh:// for a custom port.
+#[PRIV]
+#  git@git.example.org:myuser/my-pkg.git
+#  ssh://git@host:port/myuser/myfolder/{pkgbase}.git
 
 # --- The AUR git mirror (one branch per package). Reserved toggle: [AUR] holds
 # true/false, NOT a URL. Off by default (opt-in). Set true to enable it in the default

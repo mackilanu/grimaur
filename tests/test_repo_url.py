@@ -586,6 +586,27 @@ class ResolveRepoAliasTargetTests(unittest.TestCase):
 		)
 		self.assertEqual(fallbacks, [])
 
+	def test_ref_templates_pkg_for_branch_per_package(self) -> None:
+		# `{pkg}`/`{pkgbase}` in the ref selects a branch-per-package layout over any
+		# transport (a bare SSH URL has no forge `tree/{pkg}` shorthand). Transport and
+		# repo layout are orthogonal -- this works regardless of ssh vs https.
+		url, branch, _, _ = grimoire._resolve_repo_for_package(
+			"foo", alias=None, repo_url="git@host:u/r.git", branch="{pkg}", subdir=None
+		)
+		self.assertEqual((url, branch), ("git@host:u/r.git", "foo"))
+		# {pkgbase} in the ref too (sync-DB lookup mocked so the test needs no pacman).
+		with mock.patch.object(
+			grimoire, "_resolve_pkgbase", return_value="linux-firmware"
+		):
+			_, base_branch, _, _ = grimoire._resolve_repo_for_package(
+				"amd-ucode",
+				alias=None,
+				repo_url="git@host:u/r.git",
+				branch="{pkgbase}",
+				subdir=None,
+			)
+		self.assertEqual(base_branch, "linux-firmware")
+
 	def test_pkg_template_left_intact_without_package(self) -> None:
 		# No package on the namespace (e.g. nothing to substitute) -> URL untouched.
 		args = argparse.Namespace(
