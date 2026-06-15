@@ -53,7 +53,7 @@ the package wins, the rest are fallbacks. `repos.conf` is auto-seeded to `[ARCH]
 Point at anything else that ships a `PKGBUILD` with `--repo-url`/`--repo` on
 `install`, `fetch`, `inspect`, `search`, and `update`:
    - `--repo-url <url>` builds from a git URL (scheme optional: `provider.ext/u/r` works).
-   - `--branch <ref>` / `--subdir <dir>` pick a ref, or a package nested in a monorepo
+   - `--rev <branch|tag|commit>` / `--subdir <dir>` pick a revision, or a package nested in a monorepo
    - `repo --add <url> <name>` saves an alias; use it with `--repo <name>`.
    - Add more URLs under the same name for fallback mirrors. `--ls`/`--rm` to manage. Saved to `~/.config/grimoire/repos.conf`
    - `{pkg}` (the package name) or `{pkgbase}` (its pkgbase, looked up from the pacman sync DBs)
@@ -70,6 +70,12 @@ See [`repos.conf.example`](./repos.conf.example) for examples.
 Section order is precedence: `install`/`fetch`/`inspect`/`update` walk sections top to
 bottom and build from the first that has the package. On first use, **auto-creates**
 `~/.config/grimoire/repos.conf` with `[ARCH]` as the default.
+
+### Cryptographic trust
+
+- Pass `--verify` (install/fetch) to require a valid GPG signature before building. If you point at an annotated tag (`--rev <tag>`) it runs `git verify-tag` on it (for projects that sign releases, not every commit); otherwise it runs `git verify-commit` on HEAD. Aborts if the target is unsigned, has a bad signature, or the signer's key isn't in your keyring:  `gpg --recv-keys <fingerprint>`. Checks signature validity, not key trust.
+
+
 
 ### Stay Updated
 

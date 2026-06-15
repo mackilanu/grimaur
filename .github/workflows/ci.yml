@@ -76,9 +76,9 @@ jobs:
 
       - name: Custom-repo reads (default source, search, {pkgbase})
         run: |
-          ./grimoire repo --add 'https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git' ARCH
-          # bare command (no --repo) uses the top section = VUR -> descends pkgs/<pkg>
+          # bare commands start at [ARCH] and fallthrough to next src [VUR]
           ./grimoire fetch grimoire-git | grep -q 'pkgs/grimoire-git'
+          # check empty search
           ./grimoire search '' --repo VUR --no-interactive --plain | grep -q 'vscodium-rel'
           ./grimoire search bash --repo ARCH --no-interactive --plain | grep -qE '(core|extra)/bash'
           # bare search aggregates ALL conf sections -> VUR shows without --repo
@@ -88,6 +88,10 @@ jobs:
           ./grimoire update grimoire-git --repo VUR --noconfirm 2>&1 | tee /tmp/upd.log
           grep -q 'up to date' /tmp/upd.log
 
+      - name: Build from [ARCH] official repo
+        run: |
+          ./grimoire install fastfetch --no-confirm && fastfetch
+
       - name: Test --use-ssh rewrites URLs (clone fails, but rewrite worked)
         env:
           DEBUG: "1"
@@ -96,11 +100,11 @@ jobs:
           grep -qF 'ssh://git@github.com/h8d13/archinstoo' /tmp/ssh.log; echo "URL re-written PASS." \
             || { echo "FAIL: --use-ssh did not rewrite URL to ssh://"; exit 1; }
 
-      # --- AUR backend: opt in ([AUR] as the only/first section) and exercise it ---
+      # --- AUR backend: opt in ([AUR] toggle = true, only/first section) and exercise it ---
       - name: Enable the AUR and run AUR-backed tests (yay)
         run: |
-          rm -f ~/.config/grimoire/repos.conf
-          ./grimoire repo --add 'https://github.com/archlinux/aur.git' AUR
+          mkdir -p ~/.config/grimoire
+          printf '[AUR]\n  true\n' > ~/.config/grimoire/repos.conf
           ./grimoire fetch $PKG
           ./grimoire --refresh fetch $PKG
           rm -rf ~/.cache/grimoire/$PKG
@@ -124,6 +128,7 @@ jobs:
           ./grimoire inspect bash --target PKGBUILD | grep -q '^pkgname=bash'   # bare -> auto [ARCH]
           test -f ~/.config/grimoire/repos.conf
           grep -q '^\[ARCH\]' ~/.config/grimoire/repos.conf
-          grep -q '^#\[AUR\]' ~/.config/grimoire/repos.conf
+          grep -q '^\[AUR\]' ~/.config/grimoire/repos.conf                # reserved AUR toggle is seeded...
+          ./grimoire list --repo AUR 2>&1 | grep -qi 'disabled'           # ...and off by default (opt-in)
 
       - run: ./grimoire list

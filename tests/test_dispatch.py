@@ -45,6 +45,19 @@ class MultiPackageDispatchTests(unittest.TestCase):
 		self.assertEqual(rc, 0)
 		self.assertEqual([c.args[0] for c in fetch.call_args_list], ["a", "b", "c"])
 
+	def test_verify_flag_flows_to_workers(self) -> None:
+		with mock.patch.object(grimoire, "fetch_package") as fetch:
+			self._main("fetch", "a", "--repo-url", URL, "--verify")
+		self.assertTrue(fetch.call_args_list[0].kwargs["verify"])
+		with mock.patch.object(grimoire, "install_package") as install:
+			self._main("install", "a", "--repo-url", URL, "--verify")
+		self.assertTrue(install.call_args_list[0].kwargs["verify"])
+
+	def test_verify_defaults_off(self) -> None:
+		with mock.patch.object(grimoire, "fetch_package") as fetch:
+			self._main("fetch", "a", "--repo-url", URL)
+		self.assertFalse(fetch.call_args_list[0].kwargs["verify"])
+
 	def test_install_calls_worker_per_package_sharing_state(self) -> None:
 		with mock.patch.object(grimoire, "install_package") as install:
 			rc = self._main("install", "a", "b", "--repo-url", URL)

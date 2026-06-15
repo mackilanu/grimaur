@@ -401,7 +401,7 @@ def _ensure_scheme(url: str) -> str:
 def parse_repo_url(url: str) -> tuple[str, str | None, str | None]:
 	# Expand a forge directory/file URL to (clone_url, ref, subdir) so --repo-url can
 	# target a subdir. ref is taken as one path segment, so slash-branches need an
-	# explicit --branch/--subdir. Non-forge URLs fall through unchanged.
+	# explicit --rev/--subdir. Non-forge URLs fall through unchanged.
 	url = _ensure_scheme(url)
 	parsed = urllib.parse.urlparse(url)
 	if parsed.scheme not in ("http", "https"):
@@ -1086,6 +1086,42 @@ def _reset_git_worktree(package_dir: Path, refs: Sequence[str]) -> None:
 	)
 
 
+def _ref_is_annotated_tag(package_dir: Path, ref: str) -> bool:
+	# Whether `ref` names an annotated tag (a "tag" object -- the signable kind; a branch,
+	# commit, or lightweight tag is a "commit"). Drives verify-tag vs verify-commit.
+	try:
+		out = run_command(
+			["git", "-C", str(package_dir), "cat-file", "-t", ref], capture=True
+		)
+	except AurGitError:
+		return False
+	return str(out).strip() == "tag"
+
+
+def _verify_signature(package_dir: Path, package: str, ref: str | None = None) -> None:
+	# `--verify`: require a cryptographically valid GPG signature from a key in the caller's
+	# keyring. When the requested ref is an annotated tag, verify that tag (covers projects
+	# that sign releases, not every commit); otherwise verify the HEAD commit. Either way
+	# this checks signature validity, NOT key trust -- a good signature from any held key
+	# passes (gpg only warns). Fails on an unsigned target, a missing public key, or a bad
+	# signature. git's own "Good signature"/error lines stream through.
+	if ref and _ref_is_annotated_tag(package_dir, ref):
+		cmd = ["git", "-C", str(package_dir), "verify-tag", ref]
+		target = f"tag {ref}"
+		print(style(f"==> git verify-tag {ref} ({package})", DIM))
+	else:
+		cmd = ["git", "-C", str(package_dir), "verify-commit", "HEAD"]
+		target = "the HEAD commit"
+		print(style(f"==> git verify-commit HEAD ({package})", DIM))
+	try:
+		run_command(cmd)
+	except AurGitError as exc:
+		raise AurGitError(
+			f"signature verification failed for '{package}': {target} is unsigned, has a "
+			"bad signature, or the signer's key is not in your GPG keyring"
+		) from exc
+
+
 def is_regex(pattern: str) -> bool:
 	regex_chars = r".*+?[]{}()^$|\\"
 	return any(char in pattern for char in regex_chars)
@@ -1586,6 +1622,7 @@ def install_package(
 	]
 	| None = None,
 	update_to: str | None = None,
+	verify: bool = False,
 ) -> None:
 	visited = visited or set()
 	if package in visited:
@@ -1623,6 +1660,8 @@ def install_package(
 			subdir=subdir,
 			repo_fallbacks=repo_fallbacks,
 		)
+	if verify:
+		_verify_signature(package_dir, package, branch)
 	_, pkgdesc, deps = parse_dependencies(read_srcinfo(package_dir))
 	print(f"==> {package}: {pkgdesc}" if pkgdesc else f"==> {package}")
 
@@ -1651,17 +1690,7 @@ def install_package(
 			noconfirm=noconfirm,
 			visited=visited,
 			preinstalled_official=preinstalled_official,
-		)
-
-	if package_dir is None:
-		package_dir = ensure_clone(
-			package,
-			dest_root,
-			refresh=refresh,
-			repo_url=repo_url,
-			branch=branch,
-			subdir=subdir,
-			repo_fallbacks=repo_fallbacks,
+			verify=verify,
 		)
 
 	build_and_install(package_dir, noconfirm=noconfirm, refresh=refresh)
@@ -2198,7 +2227,7 @@ def _repo_package_names(
 	#   subdir-container : one dir per package under <subdir> (glob <subdir>/*/PKGBUILD).
 	#   flat            : one dir per package at the repo root (glob */PKGBUILD).
 	#   branch-per-package: one branch per package (read off `git ls-remote`).
-	# Clone the default (or --branch) ref and list its package dirs. If the working tree
+	# Clone the default (or --rev) ref and list its package dirs. If the working tree
 	# has none and no --subdir was given, fall back to branch-per-package via ls-remote.
 	# This distinguishes flat from branch-per-package by what the ref actually contains
 	# (head count can't: a flat repo may carry a few arch/variant branches). Templated
@@ -2617,6 +2646,7 @@ def fetch_package(
 		]
 	]
 	| None = None,
+	verify: bool = False,
 ) -> Path:
 	if sources is not None:
 		package_dir = _clone_any_source(package, dest_root, sources, refresh=refresh)
@@ -2630,6 +2660,8 @@ def fetch_package(
 			subdir=subdir,
 			repo_fallbacks=repo_fallbacks,
 		)
+	if verify:
+		_verify_signature(package_dir, package, branch)
 	print(f"Package fetched to {package_dir}")
 	return package_dir
 
@@ -2698,7 +2730,14 @@ def build_parser() -> argparse.ArgumentParser:
 		"--subdir",
 		help="Build from this subdirectory of the repo (relative to clone root)",
 	)
-	fetch_parser.add_argument("--branch", help="Git branch, tag, or ref to check out")
+	fetch_parser.add_argument(
+		"--rev", help="Git revision to check out: branch, tag, or commit"
+	)
+	fetch_parser.add_argument(
+		"--verify",
+		action="store_true",
+		help="Require a valid GPG signature: verify-tag if HEAD is a tag, else verify-commit (no trust check)",
+	)
 
 	install_parser = subparsers.add_parser(
 		"install", help="Resolve dependencies and build/install a package"
@@ -2720,7 +2759,14 @@ def build_parser() -> argparse.ArgumentParser:
 		"--subdir",
 		help="Build from this subdirectory of the repo (relative to clone root)",
 	)
-	install_parser.add_argument("--branch", help="Git branch, tag, or ref to check out")
+	install_parser.add_argument(
+		"--rev", help="Git revision to check out: branch, tag, or commit"
+	)
+	install_parser.add_argument(
+		"--verify",
+		action="store_true",
+		help="Require a valid GPG signature: verify-tag if HEAD is a tag, else verify-commit (no trust check)",
+	)
 
 	remove_parser = subparsers.add_parser("remove", help="Remove an installed package")
 	remove_parser.add_argument(
@@ -2770,7 +2816,9 @@ def build_parser() -> argparse.ArgumentParser:
 		"--subdir",
 		help="Build from this subdirectory of the repo (relative to clone root)",
 	)
-	update_parser.add_argument("--branch", help="Git branch, tag, or ref to check out")
+	update_parser.add_argument(
+		"--rev", help="Git revision to check out: branch, tag, or commit"
+	)
 	update_parser.add_argument(
 		"--global",
 		action="store_true",
@@ -2814,7 +2862,9 @@ def build_parser() -> argparse.ArgumentParser:
 		"--subdir",
 		help="Package container subdir in the repo (one dir per package)",
 	)
-	search_parser.add_argument("--branch", help="Git branch, tag, or ref to search")
+	search_parser.add_argument(
+		"--rev", help="Git revision to search: branch, tag, or commit"
+	)
 
 	inspect_parser = subparsers.add_parser(
 		"inspect", help="Show PKGBUILD or dependency information"
@@ -2839,7 +2889,9 @@ def build_parser() -> argparse.ArgumentParser:
 		"--subdir",
 		help="Inspect this subdirectory of the repo (relative to clone root)",
 	)
-	inspect_parser.add_argument("--branch", help="Git branch, tag, or ref to check out")
+	inspect_parser.add_argument(
+		"--rev", help="Git revision to check out: branch, tag, or commit"
+	)
 	inspect_parser.add_argument(
 		"--plain",
 		action="store_true",
@@ -2941,7 +2993,7 @@ def _resolve_repo_target(
 		getattr(args, "package", None),
 		alias=alias,
 		repo_url=repo_url,
-		branch=getattr(args, "branch", None),
+		branch=getattr(args, "rev", None),
 		subdir=getattr(args, "subdir", None),
 	)
 
@@ -2960,7 +3012,7 @@ def _resolve_sources(
 	# {pkgbase} templates per package (multi-package install/fetch resolves in a loop).
 	alias = getattr(args, "repo", None)
 	repo_url = getattr(args, "repo_url", None)
-	branch = getattr(args, "branch", None)
+	branch = getattr(args, "rev", None)
 	subdir = getattr(args, "subdir", None)
 	if alias or repo_url:
 		return [
@@ -3152,6 +3204,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 						branch=branch,
 						subdir=subdir,
 						repo_fallbacks=repo_fallbacks,
+						verify=args.verify,
 					)
 				else:
 					fetch_package(
@@ -3159,6 +3212,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 						dest_root,
 						refresh=refresh,
 						sources=pkg_sources,
+						verify=args.verify,
 					)
 		elif args.command == "install":
 			# Share the dedup/official-dep state across every requested package so a
@@ -3176,6 +3230,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 						visited=install_visited,
 						preinstalled_official=install_preinstalled,
 						sources=pkg_sources,
+						verify=args.verify,
 					)
 					continue
 				repo_url, branch, subdir, repo_fallbacks = pkg_sources[0]
@@ -3207,6 +3262,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 					branch=branch,
 					subdir=subdir,
 					repo_fallbacks=repo_fallbacks,
+					verify=args.verify,
 				)
 		elif args.command == "remove":
 			if args.cache:
@@ -3235,13 +3291,13 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: C901  argparse comm
 				targets=args.packages or None,
 				repo=getattr(args, "repo", None),
 				repo_url=getattr(args, "repo_url", None),
-				branch=getattr(args, "branch", None),
+				branch=getattr(args, "rev", None),
 				subdir=getattr(args, "subdir", None),
 			)
 		elif args.command == "search":
 			explicit_alias = getattr(args, "repo", None)
 			explicit_url = getattr(args, "repo_url", None)
-			branch_arg = getattr(args, "branch", None)
+			branch_arg = getattr(args, "rev", None)
 			subdir_arg = getattr(args, "subdir", None)
 			regex_obj: re.Pattern | None = None
 			needle: str | None = None

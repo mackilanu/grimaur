@@ -591,5 +591,52 @@ class CloneAnySourceTests(unittest.TestCase):
 		self.assertIn("not found in any configured source", str(ctx.exception))
 
 
+class VerifyCommitTests(unittest.TestCase):
+	"""--verify: a tagged HEAD verifies the tag, else the commit; must pass or abort
+	(offline file://, no GPG key needed -- all targets here are unsigned)."""
+
+	def setUp(self) -> None:
+		tmp = tempfile.TemporaryDirectory()
+		self.addCleanup(tmp.cleanup)
+		self.repo = Path(tmp.name) / "r"
+		self.repo.mkdir()
+		_git(self.repo, "init", "-q", "-b", "master")
+		(self.repo / "PKGBUILD").write_text("pkgname=foo\npkgver=1\n")
+		_git(self.repo, "add", "-A")
+		_git(self.repo, "commit", "-qm", "unsigned")
+
+	def test_unsigned_head_raises(self) -> None:
+		# No ref -> commit path.
+		with self.assertRaises(grimoire.AurGitError) as ctx:
+			grimoire._verify_signature(self.repo, "foo")
+		self.assertIn("signature verification failed", str(ctx.exception))
+		self.assertIn("HEAD commit", str(ctx.exception))
+
+	def test_ref_is_annotated_tag(self) -> None:
+		_git(self.repo, "tag", "-a", "v1", "-m", "release")  # annotated
+		_git(self.repo, "tag", "light")  # lightweight
+		self.assertTrue(grimoire._ref_is_annotated_tag(self.repo, "v1"))
+		self.assertFalse(grimoire._ref_is_annotated_tag(self.repo, "light"))
+		self.assertFalse(grimoire._ref_is_annotated_tag(self.repo, "master"))
+
+	def test_tag_ref_takes_tag_path(self) -> None:
+		_git(self.repo, "tag", "-a", "v1", "-m", "release")  # annotated, unsigned
+		with self.assertRaises(grimoire.AurGitError) as ctx:
+			grimoire._verify_signature(self.repo, "foo", "v1")
+		self.assertIn("tag v1", str(ctx.exception))
+
+	def test_branch_ref_uses_commit_path(self) -> None:
+		# A branch ref is not a tag object -> commit path (message names the commit).
+		with self.assertRaises(grimoire.AurGitError) as ctx:
+			grimoire._verify_signature(self.repo, "foo", "master")
+		self.assertIn("HEAD commit", str(ctx.exception))
+
+	def test_valid_signature_passes(self) -> None:
+		# A good verify exit (0) returns without raising; mock the git call so the test
+		# needs no GPG key. No ref -> commit path.
+		with mock.patch.object(grimoire, "run_command", return_value=""):
+			grimoire._verify_signature(self.repo, "foo")
+
+
 if __name__ == "__main__":
 	unittest.main()

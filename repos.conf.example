@@ -10,7 +10,7 @@
 #   {pkg}      -> the package name
 #   {pkgbase}  -> its pkgbase (from the local pacman sync DBs, so split packages resolve)
 # Scheme is optional (github.com/u/r == https://github.com/u/r); tree / blob / raw
-# forge links are all accepted. Per-command --branch <ref> / --subdir <dir> override.
+# forge links are all accepted. Per-command --rev <branch|tag|commit> / --subdir <dir> override.
 
 # --- DEFAULT: Arch's official packages, one git repo per pkgbase on the Arch GitLab.
 # A bare `grimoire install <pkg>` builds the official package from source.

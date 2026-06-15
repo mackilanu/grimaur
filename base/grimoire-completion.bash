@@ -37,25 +37,25 @@ _grimoire_completion()
 
         case "$subcmd" in
             fetch)
-                opts="$global_opts --force --repo-url --repo --subdir --branch"
+                opts="$global_opts --verify --repo-url --repo --subdir --rev"
                 ;;
             install)
-                opts="$global_opts --noconfirm --repo-url --repo --subdir --branch"
+                opts="$global_opts --noconfirm --verify --repo-url --repo --subdir --rev"
                 ;;
             remove)
                 opts="$global_opts --noconfirm --clone --cache"
                 ;;
             update)
-                opts="$global_opts --noconfirm --devel --repo-url --repo --subdir --branch --global"
+                opts="$global_opts --noconfirm --devel --repo-url --repo --subdir --rev --global"
                 ;;
             search)
-                opts="$global_opts --limit --no-interactive --noconfirm --plain --repo-url --repo --subdir --branch"
+                opts="$global_opts --limit --no-interactive --noconfirm --plain --repo-url --repo --subdir --rev"
                 ;;
             inspect)
-                opts="$global_opts --target --repo-url --repo --subdir --branch --plain"
+                opts="$global_opts --target --repo-url --repo --subdir --rev --plain"
                 ;;
             list)
-                opts="$global_opts --aur"
+                opts="$global_opts --repo"
                 ;;
             repo)
                 opts="$global_opts --add --rm --ls"

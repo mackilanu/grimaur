@@ -21,7 +21,7 @@ _grimoire() {
         '--repo-url[Clone from custom Git URL]:url:'
         '--repo[Use a registered repo alias as the mirror list]:name:'
         '--subdir[Build from this subdirectory of the repo]:subdir:'
-        '--branch[Git branch, tag, or ref to check out]:branch:'
+        '--rev[Git revision to check out: branch, tag, or commit]:rev:'
     )
 
     _arguments -C \
@@ -51,6 +51,7 @@ _grimoire() {
                     _arguments \
                         $global_opts \
                         $source_opts \
+                        '--verify[Require a valid GPG signature (git verify-tag/-commit; no trust check)]' \
                         '1:package:_grimoire_aur_packages'
                     ;;
                 install)
@@ -58,6 +59,7 @@ _grimoire() {
                         $global_opts \
                         $source_opts \
                         '--noconfirm[Skip confirmation prompts]' \
+                        '--verify[Require a valid GPG signature (git verify-tag/-commit; no trust check)]' \
                         '1:package:_grimoire_aur_packages'
                     ;;
                 remove)

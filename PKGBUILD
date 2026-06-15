@@ -3,15 +3,16 @@ pkgver=r216.g17893eb
 pkgrel=1
 pkgdesc="Lightweight Arch package builder that builds from any git source"
 arch=('any')
-url="https://github.com/mackilanu/grimoire"
-_dev_url="https://github.com/h8d13/grimoire"
-_dev_branch="dot-cache"
+url="https://github.com/mackilanu/grimaur"
+
+# _dev_url="https://github.com/h8d13/grimoire"
+# _dev_branch="dot-cache"
 
 license=('MIT')
 depends=('python' 'git')
 provides=('grimoire')
 conflicts=('grimoire')
-source=("$pkgname::git+$_dev_url.git#branch=$_dev_branch")
+source=("$pkgname::git+$url.git")
 sha256sums=('SKIP')
 
 pkgver() {

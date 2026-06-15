@@ -146,7 +146,7 @@ class ParseRepoUrlTests(unittest.TestCase):
 	def test_slash_branch_is_misparsed_without_explicit_flags(self) -> None:
 		# A branch name with a slash can't be told apart from the subpath, so the
 		# first segment becomes the ref and the rest the subdir. Documents why
-		# --branch/--subdir override exists.
+		# --rev/--subdir override exists.
 		self.assertEqual(
 			grimoire.parse_repo_url("https://github.com/o/r/tree/feature/x/pkg"),
 			("https://github.com/o/r.git", "feature", "x/pkg"),
@@ -328,16 +328,14 @@ class ResolveRepoTargetTests(unittest.TestCase):
 		shutil.rmtree(self._tmp, ignore_errors=True)
 
 	def test_tree_url_fills_ref_and_subdir(self) -> None:
-		args = argparse.Namespace(repo_url=ARCHINSTOO_TREE, branch=None, subdir=None)
+		args = argparse.Namespace(repo_url=ARCHINSTOO_TREE, rev=None, subdir=None)
 		self.assertEqual(
 			grimoire._resolve_repo_target(args),
 			("https://github.com/h8d13/archinstoo.git", "master", "archinstoo", []),
 		)
 
 	def test_explicit_flags_override_parsed(self) -> None:
-		args = argparse.Namespace(
-			repo_url=ARCHINSTOO_TREE, branch="dev", subdir="other"
-		)
+		args = argparse.Namespace(repo_url=ARCHINSTOO_TREE, rev="dev", subdir="other")
 		self.assertEqual(
 			grimoire._resolve_repo_target(args),
 			("https://github.com/h8d13/archinstoo.git", "dev", "other", []),
@@ -345,7 +343,7 @@ class ResolveRepoTargetTests(unittest.TestCase):
 
 	def test_plain_repo_url_untouched(self) -> None:
 		args = argparse.Namespace(
-			repo_url="https://github.com/o/r.git", branch=None, subdir=None
+			repo_url="https://github.com/o/r.git", rev=None, subdir=None
 		)
 		self.assertEqual(
 			grimoire._resolve_repo_target(args),
@@ -353,7 +351,7 @@ class ResolveRepoTargetTests(unittest.TestCase):
 		)
 
 	def test_no_repo_url_returns_none(self) -> None:
-		args = argparse.Namespace(repo_url=None, branch=None, subdir=None)
+		args = argparse.Namespace(repo_url=None, rev=None, subdir=None)
 		self.assertEqual(grimoire._resolve_repo_target(args), (None, None, None, []))
 
 
@@ -393,7 +391,7 @@ class DefaultRepoTests(unittest.TestCase):
 	def test_resolve_uses_default_when_no_flag(self) -> None:
 		self._write("[ARCH]\n  https://gitlab/x/{pkgbase}.git\n")
 		args = argparse.Namespace(
-			package="bash", repo=None, repo_url=None, branch=None, subdir=None
+			package="bash", repo=None, repo_url=None, rev=None, subdir=None
 		)
 		primary_url, _, _, _ = grimoire._resolve_repo_target(args)
 		self.assertEqual(primary_url, "https://gitlab/x/bash.git")
@@ -403,7 +401,7 @@ class DefaultRepoTests(unittest.TestCase):
 			"[ARCH]\n  https://gitlab/x/{pkgbase}.git\n\n[VUR]\n  https://x/vur.git\n"
 		)
 		args = argparse.Namespace(
-			package="bash", repo="VUR", repo_url=None, branch=None, subdir=None
+			package="bash", repo="VUR", repo_url=None, rev=None, subdir=None
 		)
 		primary_url, _, _, _ = grimoire._resolve_repo_target(args)
 		self.assertEqual(primary_url, "https://x/vur.git")
@@ -449,7 +447,7 @@ class ResolveSourcesTests(unittest.TestCase):
 		base: dict[str, object] = {
 			"repo": None,
 			"repo_url": None,
-			"branch": None,
+			"rev": None,
 			"subdir": None,
 		}
 		base.update(kw)
@@ -525,7 +523,7 @@ class ResolveRepoAliasTargetTests(unittest.TestCase):
 	def test_alias_first_is_primary_rest_are_fallbacks(self) -> None:
 		grimoire.add_repo_alias("vur", "https://github.com/h8d13/VUR.git")
 		grimoire.add_repo_alias("vur", ARCHINSTOO_TREE)
-		args = argparse.Namespace(repo="vur", repo_url=None, branch=None, subdir=None)
+		args = argparse.Namespace(repo="vur", repo_url=None, rev=None, subdir=None)
 		primary_url, branch, subdir, fallbacks = grimoire._resolve_repo_target(args)
 		self.assertEqual(primary_url, "https://github.com/h8d13/VUR.git")
 		self.assertIsNone(branch)
@@ -539,13 +537,13 @@ class ResolveRepoAliasTargetTests(unittest.TestCase):
 	def test_explicit_flags_override_every_mirror(self) -> None:
 		grimoire.add_repo_alias("vur", "https://github.com/h8d13/VUR.git")
 		grimoire.add_repo_alias("vur", ARCHINSTOO_TREE)
-		args = argparse.Namespace(repo="vur", repo_url=None, branch="dev", subdir="pkg")
+		args = argparse.Namespace(repo="vur", repo_url=None, rev="dev", subdir="pkg")
 		_, branch, subdir, fallbacks = grimoire._resolve_repo_target(args)
 		self.assertEqual((branch, subdir), ("dev", "pkg"))
 		self.assertEqual(fallbacks[0][1:], ("dev", "pkg"))
 
 	def test_unknown_alias_raises(self) -> None:
-		args = argparse.Namespace(repo="nope", repo_url=None, branch=None, subdir=None)
+		args = argparse.Namespace(repo="nope", repo_url=None, rev=None, subdir=None)
 		with self.assertRaises(grimoire.AurGitError):
 			grimoire._resolve_repo_target(args)
 
@@ -555,7 +553,7 @@ class ResolveRepoAliasTargetTests(unittest.TestCase):
 			"https://gitlab.archlinux.org/archlinux/packaging/packages/{pkg}.git",
 		)
 		args = argparse.Namespace(
-			repo="arch", repo_url=None, branch=None, subdir=None, package="bash"
+			repo="arch", repo_url=None, rev=None, subdir=None, package="bash"
 		)
 		primary_url, _, _, fallbacks = grimoire._resolve_repo_target(args)
 		self.assertEqual(
@@ -569,7 +567,7 @@ class ResolveRepoAliasTargetTests(unittest.TestCase):
 		args = argparse.Namespace(
 			repo=None,
 			repo_url="https://example.com/{pkg}.git",
-			branch=None,
+			rev=None,
 			subdir=None,
 		)
 		primary_url, _, _, _ = grimoire._resolve_repo_target(args)

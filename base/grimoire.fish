@@ -46,10 +46,13 @@ complete -c grimoire -s v -l version -d 'Show version'
 complete -c grimoire -n '__fish_seen_subcommand_from fetch install update search inspect' -l repo-url -x -d 'Clone from custom Git URL'
 complete -c grimoire -n '__fish_seen_subcommand_from fetch install update search inspect' -l repo -x -d 'Use a registered repo alias as the mirror list'
 complete -c grimoire -n '__fish_seen_subcommand_from fetch install update search inspect' -l subdir -x -d 'Build from this subdirectory of the repo'
-complete -c grimoire -n '__fish_seen_subcommand_from fetch install update search inspect' -l branch -x -d 'Git branch, tag, or ref to check out'
+complete -c grimoire -n '__fish_seen_subcommand_from fetch install update search inspect' -l rev -x -d 'Git revision to check out: branch, tag, or commit'
 
 # --noconfirm (install / remove / update / search)
 complete -c grimoire -n '__fish_seen_subcommand_from install remove update search' -l noconfirm -d 'Skip confirmation prompts'
+
+# --verify (fetch / install)
+complete -c grimoire -n '__fish_seen_subcommand_from fetch install' -l verify -d 'Require a valid GPG signature (git verify-tag/-commit; no trust check)'
 
 # remove
 complete -c grimoire -n '__fish_seen_subcommand_from remove' -l clone -d "Also remove the package's clone"
@@ -66,7 +69,6 @@ complete -c grimoire -n '__fish_seen_subcommand_from search inspect' -l plain -d
 
 # inspect
 complete -c grimoire -n '__fish_seen_subcommand_from inspect' -l target -x -a 'info PKGBUILD SRCINFO' -d 'Which data to show'
-complete -c grimoire -n '__fish_seen_subcommand_from inspect' -l full -d 'Include make/check/optional dependencies'
 
 # list
 complete -c grimoire -n '__fish_seen_subcommand_from list' -l repo -d 'List every package in repo NAME (e.g. AUR)'
