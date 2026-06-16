@@ -57,21 +57,22 @@ Point at anything else that ships a `PKGBUILD` with `--repo-url`/`--repo` on
    - `--repo-url <url>` builds from a git URL (scheme optional: `provider.ext/u/r` works).
    - `--rev <branch|tag|commit>` / `--subdir <dir>` pick a revision, or a package nested in a monorepo
    - `repo --add <url> <name>` saves an alias; use it with `--repo <name>`.
-   - Add more URLs under the same name for fallback mirrors. `--ls`/`--rm` to manage. Saved to `~/.config/grimoire/repos.ini`
-   - `{pkg}` (the package name) or `{pkgbase}` (its pkgbase, looked up from the pacman sync DBs)
+   - Add more URLs under the same name for fallback mirrors. `--ls`/`--rm` to manage.
+   - `{pkg}` (the package name) or `{pkgbase}` (its pkgbase ex: amd-ucode -> linux-firmware)
 
    ```bash
-   grimoire repo --add 'github.com/h8d13/VUR/tree/master/pkgs' VUR
+   grimoire repo --add 'provider.ext/user/repo/tree/master/pkgs' VUR
    grimoire install <pkg>
    ```
 A bare `search <term>` queries **every** section in `repos.ini` and merges the results.
 `--repo <name>` searches only this specific repo and precedes the `.conf`.
 
-See [`repos.ini.example`](./repos.ini.example) for examples.
+See [`repos.ini`](./repos.ini) for examples.
 
 Section order is precedence: `install`/`fetch`/`inspect`/`update` walk sections top to
-bottom and build from the first that has the package. On first use, **auto-creates**
-`~/.config/grimoire/repos.ini` with `[ARCH]` as the default.
+bottom and build from the first that has the package. 
+
+On first use, **auto-creates** `~/.config/grimoire/repos.ini` with `[ARCH]` as the default.
 
 ### Stay Updated
 
