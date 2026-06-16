@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-r"""grimoire: repos, fetch, inspect, search, list, update, and install/remove.
+r"""grimoire: repos, fetch, inspect, build, search, list, update, and install/remove.
 
 It natively speaks all things `makepkg`. And works outside of AUR using `git`.
 I.e: Private software colletions, Public organizations repositories, ...
