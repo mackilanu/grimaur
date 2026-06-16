@@ -70,7 +70,7 @@ A bare `search <term>` queries **every** section in `repos.ini` and merges the r
 See [`repos.ini`](./repos.ini) for examples.
 
 Section order is precedence: `install`/`fetch`/`inspect`/`update` walk sections top to
-bottom and build from the first that has the package. 
+bottom and build from the first that has the package.
 
 On first use, **auto-creates** `~/.config/grimoire/repos.ini` with `[ARCH]` as the default.
 
@@ -86,13 +86,14 @@ On first use, **auto-creates** `~/.config/grimoire/repos.ini` with `[ARCH]` as t
 ---
 
 <details>
-<summary>Additional Options</summary>
+<summary>Additional Options & Scripting</summary>
 
 ### Additional Options
 
 - Useful to build in `tmp/` pass `--dest-root` - (default: `$XDG_CACHE_HOME/grimoire`)
 - `--refresh` (global) re-pulls existing clones and expires the search cache; applies to `fetch`/`install`/`inspect`/`search`.
-- Useful for scripting on top of `grimoire`:
+
+### Scripting on top of `grimoire`:
    - `--no-color` disables colored terminal output
    - `grimoire search <term> --limit 10` limits results to the first N matches
    - `grimoire search <term> --no-interactive` lists results without prompting to install
@@ -116,7 +117,7 @@ On first use, **auto-creates** `~/.config/grimoire/repos.ini` with `[ARCH]` as t
 - Arch Package [Guidelines](https://wiki.archlinux.org/title/Arch_package_guidelines)
 - Man pages:
    - [git.1](https://www.kernel.org/pub/software/scm/git/docs/git.html)
-   - [makepkg.8](https://man.archlinux.org/man/makepkg.8) 
+   - [makepkg.8](https://man.archlinux.org/man/makepkg.8)
    - [PKGBUILD.5](https://man.archlinux.org/man/PKGBUILD.5)
    - [pacman.8](https://man.archlinux.org/man/pacman.8)
    - [vercmp.8](https://man.archlinux.org/man/vercmp.8)
