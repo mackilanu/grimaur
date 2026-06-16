@@ -52,16 +52,18 @@ class UpdateOutputTests(unittest.TestCase):
 		_git(self.src, "add", "-A")
 		_git(self.src, "commit", "-qm", "v2")
 		self.head = _git(self.src, "rev-parse", "HEAD")
-		for name in ("SHALLOW_CLONE", "USE_SSH"):
-			patcher = mock.patch.object(grimoire, name, False)
+		for name in ("shallow_clone", "use_ssh"):
+			patcher = mock.patch.object(grimoire.CONFIG, name, False)
 			patcher.start()
 			self.addCleanup(patcher.stop)
 		ign = mock.patch.object(grimoire, "get_ignored_packages", return_value=set())
 		ign.start()
 		self.addCleanup(ign.stop)
 
-	def _run_update(self, package: str, installed: str) -> tuple[str, list]:
-		calls: list[dict] = []
+	def _run_update(
+		self, package: str, installed: str
+	) -> tuple[str, list[dict[str, object]]]:
+		calls: list[dict[str, object]] = []
 
 		def _fake_install(pkg: str, dest: Path, **kw: object) -> None:
 			calls.append({"pkg": pkg, **kw})

@@ -193,11 +193,11 @@ class ResolveBuildDirTests(unittest.TestCase):
 		)
 
 	def test_missing_subdir_raises(self) -> None:
-		with self.assertRaises(grimoire.AurGitError):
+		with self.assertRaises(grimoire.GrimoireErr):
 			grimoire._resolve_build_dir(self.root, "nope")
 
 	def test_traversal_escaping_clone_root_raises(self) -> None:
-		with self.assertRaises(grimoire.AurGitError):
+		with self.assertRaises(grimoire.GrimoireErr):
 			grimoire._resolve_build_dir(self.root, "../escape")
 
 
@@ -337,54 +337,12 @@ class NormalizeGitUrlTests(unittest.TestCase):
 		)
 
 
-class ResolveRepoTargetTests(unittest.TestCase):
-	def setUp(self) -> None:
-		# Isolate XDG so _default_repo() never reads a real ~/.config repos.conf.
-		self._tmp = tempfile.mkdtemp()
-		self._orig = os.environ.get("XDG_CONFIG_HOME")
-		os.environ["XDG_CONFIG_HOME"] = self._tmp
-
-	def tearDown(self) -> None:
-		if self._orig is None:
-			os.environ.pop("XDG_CONFIG_HOME", None)
-		else:
-			os.environ["XDG_CONFIG_HOME"] = self._orig
-		shutil.rmtree(self._tmp, ignore_errors=True)
-
-	def test_tree_url_fills_ref_and_subdir(self) -> None:
-		args = argparse.Namespace(repo_url=ARCHINSTOO_TREE, rev=None, subdir=None)
-		self.assertEqual(
-			grimoire._resolve_repo_target(args),
-			("https://github.com/h8d13/archinstoo.git", "master", "archinstoo", []),
-		)
-
-	def test_explicit_flags_override_parsed(self) -> None:
-		args = argparse.Namespace(repo_url=ARCHINSTOO_TREE, rev="dev", subdir="other")
-		self.assertEqual(
-			grimoire._resolve_repo_target(args),
-			("https://github.com/h8d13/archinstoo.git", "dev", "other", []),
-		)
-
-	def test_plain_repo_url_untouched(self) -> None:
-		args = argparse.Namespace(
-			repo_url="https://github.com/o/r.git", rev=None, subdir=None
-		)
-		self.assertEqual(
-			grimoire._resolve_repo_target(args),
-			("https://github.com/o/r.git", None, None, []),
-		)
-
-	def test_no_repo_url_returns_none(self) -> None:
-		args = argparse.Namespace(repo_url=None, rev=None, subdir=None)
-		self.assertEqual(grimoire._resolve_repo_target(args), (None, None, None, []))
-
-
-class DefaultRepoTests(unittest.TestCase):
+class EnsureReposConfTests(unittest.TestCase):
 	def setUp(self) -> None:
 		self._tmp = tempfile.mkdtemp()
 		self._orig = os.environ.get("XDG_CONFIG_HOME")
 		os.environ["XDG_CONFIG_HOME"] = self._tmp
-		self.conf = Path(self._tmp) / "grimoire" / "repos.conf"
+		self.conf = Path(self._tmp) / "grimoire" / "repos.ini"
 
 	def tearDown(self) -> None:
 		if self._orig is None:
@@ -397,46 +355,14 @@ class DefaultRepoTests(unittest.TestCase):
 		self.conf.parent.mkdir(parents=True, exist_ok=True)
 		self.conf.write_text(text)
 
-	def test_no_conf_defaults_to_aur(self) -> None:
-		self.assertIsNone(grimoire._default_repo())
-
-	def test_top_section_wins(self) -> None:
-		# [ARCH] above [VUR] (AUR commented) -> ARCH is the default source.
-		self._write(
-			"#[AUR]\n#  https://aur.archlinux.org/rpc/\n\n"
-			"[ARCH]\n  https://gitlab/x/{pkgbase}.git\n\n[VUR]\n  https://x/v\n"
-		)
-		self.assertEqual(grimoire._default_repo(), "ARCH")
-
-	def test_aur_first_section_is_default(self) -> None:
-		self._write("[AUR]\n  https://aur.archlinux.org/rpc/\n\n[VUR]\n  https://x/v\n")
-		self.assertEqual(grimoire._default_repo(), "AUR")
-
-	def test_resolve_uses_default_when_no_flag(self) -> None:
-		self._write("[ARCH]\n  https://gitlab/x/{pkgbase}.git\n")
-		args = argparse.Namespace(
-			package="bash", repo=None, repo_url=None, rev=None, subdir=None
-		)
-		primary_url, _, _, _ = grimoire._resolve_repo_target(args)
-		self.assertEqual(primary_url, "https://gitlab/x/bash.git")
-
-	def test_explicit_repo_overrides_default(self) -> None:
-		self._write(
-			"[ARCH]\n  https://gitlab/x/{pkgbase}.git\n\n[VUR]\n  https://x/vur.git\n"
-		)
-		args = argparse.Namespace(
-			package="bash", repo="VUR", repo_url=None, rev=None, subdir=None
-		)
-		primary_url, _, _, _ = grimoire._resolve_repo_target(args)
-		self.assertEqual(primary_url, "https://x/vur.git")
-
 	def test_ensure_repos_conf_seeds_arch_default(self) -> None:
 		self.assertFalse(self.conf.exists())
 		grimoire._ensure_repos_conf()
 		self.assertTrue(self.conf.exists())
-		# Seeded default is [ARCH]; [AUR] is a reserved toggle, present but off (opt-in).
-		self.assertEqual(grimoire._default_repo(), "ARCH")
-		self.assertIn("AUR", grimoire.load_repo_registry())
+		# Seeded with [ARCH] first; [AUR] is a reserved toggle, present but off (opt-in).
+		registry = grimoire.load_repo_registry()
+		self.assertEqual(next(iter(registry)), "ARCH")
+		self.assertIn("AUR", registry)
 		self.assertFalse(grimoire._aur_enabled())
 
 	def test_ensure_repos_conf_does_not_clobber(self) -> None:
@@ -447,14 +373,14 @@ class DefaultRepoTests(unittest.TestCase):
 
 class ResolveSourcesTests(unittest.TestCase):
 	"""Ordered source chain: explicit flag collapses to one source, otherwise every
-	repos.conf section top to bottom (conf order == precedence), AUR encoded as a
+	repos.ini section top to bottom (conf order == precedence), AUR encoded as a
 	None repo_url, templates resolved per package."""
 
 	def setUp(self) -> None:
 		self._tmp = tempfile.mkdtemp()
 		self._orig = os.environ.get("XDG_CONFIG_HOME")
 		os.environ["XDG_CONFIG_HOME"] = self._tmp
-		self.conf = Path(self._tmp) / "grimoire" / "repos.conf"
+		self.conf = Path(self._tmp) / "grimoire" / "repos.ini"
 
 	def tearDown(self) -> None:
 		if self._orig is None:
@@ -547,8 +473,9 @@ class ResolveRepoAliasTargetTests(unittest.TestCase):
 	def test_alias_first_is_primary_rest_are_fallbacks(self) -> None:
 		grimoire.add_repo_alias("vur", "https://github.com/h8d13/VUR.git")
 		grimoire.add_repo_alias("vur", ARCHINSTOO_TREE)
-		args = argparse.Namespace(repo="vur", repo_url=None, rev=None, subdir=None)
-		primary_url, branch, subdir, fallbacks = grimoire._resolve_repo_target(args)
+		primary_url, branch, subdir, fallbacks = grimoire._resolve_repo_for_package(
+			None, alias="vur", repo_url=None, branch=None, subdir=None
+		)
 		self.assertEqual(primary_url, "https://github.com/h8d13/VUR.git")
 		self.assertIsNone(branch)
 		self.assertIsNone(subdir)
@@ -561,25 +488,26 @@ class ResolveRepoAliasTargetTests(unittest.TestCase):
 	def test_explicit_flags_override_every_mirror(self) -> None:
 		grimoire.add_repo_alias("vur", "https://github.com/h8d13/VUR.git")
 		grimoire.add_repo_alias("vur", ARCHINSTOO_TREE)
-		args = argparse.Namespace(repo="vur", repo_url=None, rev="dev", subdir="pkg")
-		_, branch, subdir, fallbacks = grimoire._resolve_repo_target(args)
+		_, branch, subdir, fallbacks = grimoire._resolve_repo_for_package(
+			None, alias="vur", repo_url=None, branch="dev", subdir="pkg"
+		)
 		self.assertEqual((branch, subdir), ("dev", "pkg"))
 		self.assertEqual(fallbacks[0][1:], ("dev", "pkg"))
 
 	def test_unknown_alias_raises(self) -> None:
-		args = argparse.Namespace(repo="nope", repo_url=None, rev=None, subdir=None)
-		with self.assertRaises(grimoire.AurGitError):
-			grimoire._resolve_repo_target(args)
+		with self.assertRaises(grimoire.GrimoireErr):
+			grimoire._resolve_repo_for_package(
+				None, alias="nope", repo_url=None, branch=None, subdir=None
+			)
 
 	def test_pkg_template_substituted_by_package_name(self) -> None:
 		grimoire.add_repo_alias(
 			"arch",
 			"https://gitlab.archlinux.org/archlinux/packaging/packages/{pkg}.git",
 		)
-		args = argparse.Namespace(
-			repo="arch", repo_url=None, rev=None, subdir=None, package="bash"
+		primary_url, _, _, fallbacks = grimoire._resolve_repo_for_package(
+			"bash", alias="arch", repo_url=None, branch=None, subdir=None
 		)
-		primary_url, _, _, fallbacks = grimoire._resolve_repo_target(args)
 		self.assertEqual(
 			primary_url,
 			"https://gitlab.archlinux.org/archlinux/packaging/packages/bash.git",
@@ -608,14 +536,14 @@ class ResolveRepoAliasTargetTests(unittest.TestCase):
 		self.assertEqual(base_branch, "linux-firmware")
 
 	def test_pkg_template_left_intact_without_package(self) -> None:
-		# No package on the namespace (e.g. nothing to substitute) -> URL untouched.
-		args = argparse.Namespace(
-			repo=None,
+		# No package given (nothing to substitute) -> URL untouched.
+		primary_url, _, _, _ = grimoire._resolve_repo_for_package(
+			None,
+			alias=None,
 			repo_url="https://example.com/{pkg}.git",
-			rev=None,
+			branch=None,
 			subdir=None,
 		)
-		primary_url, _, _, _ = grimoire._resolve_repo_target(args)
 		self.assertEqual(primary_url, "https://example.com/{pkg}.git")
 
 
@@ -624,7 +552,7 @@ class AddRemovePreserveCommentsTests(unittest.TestCase):
 		self._tmp = tempfile.mkdtemp()
 		self._orig = os.environ.get("XDG_CONFIG_HOME")
 		os.environ["XDG_CONFIG_HOME"] = self._tmp
-		self.conf = Path(self._tmp) / "grimoire" / "repos.conf"
+		self.conf = Path(self._tmp) / "grimoire" / "repos.ini"
 		self.conf.parent.mkdir(parents=True)
 		self.conf.write_text(
 			"# header\n[ARCH]\n  https://x/{pkgbase}.git\n\n#[AUR]\n#  https://aur/rpc/\n"

@@ -34,14 +34,15 @@ _grimoire() {
         command)
             local -a commands
             commands=(
-                'fetch:Clone the package branch locally'
+                'fetch:Clone a package locally'
                 'install:Resolve dependencies and build/install a package'
                 'remove:Remove an installed package'
+                'build:Build+install a fetched (possibly edited) package, no re-clone'
                 'update:Upgrade installed foreign packages'
                 'search:Search packages via the configured backend'
                 'inspect:Show PKGBUILD or dependency information'
                 'list:List installed foreign (AUR) packages'
-                'repo:Manage repo URL aliases in repos.conf'
+                'repo:Manage repo URL aliases in repos.ini'
             )
             _describe -t commands 'grimoire command' commands
             ;;
@@ -73,6 +74,12 @@ _grimoire() {
                         "--clone[Also remove the package's clone]" \
                         '--cache[Remove the search result cache]' \
                         '1::package:_grimoire_foreign_packages'
+                    ;;
+                build)
+                    _arguments \
+                        $global_opts \
+                        '--noconfirm[Skip confirmation prompts]' \
+                        '*:package:_grimoire_foreign_packages'
                     ;;
                 update)
                     _arguments \

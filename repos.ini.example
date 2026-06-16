@@ -4,7 +4,7 @@
 # inspect / update walk sections top to bottom and use the FIRST that has the package (the
 # rest are fallbacks); --repo <NAME> forces one. A bare `search` queries every section and
 # merges the results (like `pacman -Ss`). Can be managed with `grimoire repo --add/--rm/--ls`.
-# Lives at $XDG_CONFIG_HOME/grimoire/repos.conf (usually ~/.config/grimoire/repos.conf).
+# Lives at $XDG_CONFIG_HOME/grimoire/repos.ini (usually ~/.config/grimoire/repos.ini).
 #
 # URL placeholders, substituted per package:
 #   {pkg}      -> the package name
@@ -15,7 +15,7 @@
 # --- DEFAULT: Arch's official packages, one git repo per pkgbase on the Arch GitLab.
 # A bare `grimoire install <pkg>` builds the official package from source.
 [ARCH]
-  https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git
+https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git
 
 # 1) Single package -- PKGBUILD at the repo root (or <pkg>/, auto-descended). For a one-off
 #    just use --repo-url <url> instead of registering an alias.
@@ -63,4 +63,4 @@
 # chain, search, and `list --repo AUR`; move it above [ARCH] to make it your default.
 # (An explicit `--repo AUR` always works as a deliberate override, even when off.)
 [AUR]
-  false
+false

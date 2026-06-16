@@ -45,6 +45,9 @@ _grimoire_completion()
             remove)
                 opts="$global_opts --noconfirm --clone --cache"
                 ;;
+            build)
+                opts="$global_opts --noconfirm"
+                ;;
             update)
                 opts="$global_opts --noconfirm --devel --repo-url --repo --subdir --rev --global"
                 ;;
@@ -90,15 +93,15 @@ _grimoire_completion()
 
     # If no subcommand yet, complete subcommands
     if [[ -z "$subcmd" ]]; then
-        local subcmds="fetch install remove update search inspect list repo"
+        local subcmds="fetch install remove build update search inspect list repo"
         mapfile -t COMPREPLY < <(compgen -W "$subcmds" -- "$cur")
         return 0
     fi
 
     # Complete package names based on subcommand
     case "$subcmd" in
-        remove|update)
-            # Complete with installed foreign packages
+        remove|update|build)
+            # Complete with installed foreign packages (build also accepts any fetched name)
             local packages
             packages=$(pacman -Qmq 2>/dev/null)
             mapfile -t COMPREPLY < <(compgen -W "$packages" -- "$cur")

@@ -64,8 +64,8 @@ class EnsureCloneRefTests(unittest.TestCase):
 
 		# default globals already False at import; pin them so a developer's
 		# environment can't flip shallow clones on and break commit checkout.
-		for name in ("SHALLOW_CLONE", "USE_SSH"):
-			patcher = mock.patch.object(grimoire, name, False)
+		for name in ("shallow_clone", "use_ssh"):
+			patcher = mock.patch.object(grimoire.CONFIG, name, False)
 			patcher.start()
 			self.addCleanup(patcher.stop)
 
@@ -73,10 +73,8 @@ class EnsureCloneRefTests(unittest.TestCase):
 		build_dir: Path = grimoire.ensure_clone(
 			"foo",
 			dest,
+			grimoire.CloneSource(f"file://{self.src}", branch, "pkg"),
 			refresh=refresh,
-			repo_url=f"file://{self.src}",
-			branch=branch,
-			subdir="pkg",
 		)
 		return build_dir
 
@@ -119,14 +117,12 @@ class EnsureCloneRefTests(unittest.TestCase):
 				self.assertEqual(self._pkgver(build_dir), expected)
 
 	def test_missing_subdir_raises(self) -> None:
-		with self.assertRaises(grimoire.AurGitError):
+		with self.assertRaises(grimoire.GrimoireErr):
 			grimoire.ensure_clone(
 				"foo",
 				Path(tempfile.mkdtemp(dir=self.root)),
+				grimoire.CloneSource(f"file://{self.src}", "master", "does-not-exist"),
 				refresh=False,
-				repo_url=f"file://{self.src}",
-				branch="master",
-				subdir="does-not-exist",
 			)
 
 
@@ -161,22 +157,14 @@ class UpdateRepoPrimitivesTests(unittest.TestCase):
 	def test_versioned_check_reads_repo_srcinfo(self) -> None:
 		# Mirror update's versioned path: a container subdir + package name descends
 		# to pkgs/foo and the version comes from the repo's .SRCINFO, not the AUR.
-		r_url, r_branch, r_subdir, r_fallbacks = grimoire._resolve_repo_for_package(
+		src = grimoire._resolve_repo_for_package(
 			"foo",
 			alias=None,
 			repo_url=f"file://{self.src}",
 			branch="master",
 			subdir="pkgs",
 		)
-		pkg_dir = grimoire.ensure_clone(
-			"foo",
-			self.dest,
-			refresh=False,
-			repo_url=r_url,
-			branch=r_branch,
-			subdir=r_subdir,
-			repo_fallbacks=r_fallbacks,
-		)
+		pkg_dir = grimoire.ensure_clone("foo", self.dest, src, refresh=False)
 		self.assertEqual(pkg_dir, self.dest / "foo" / "pkgs" / "foo")
 		version, _ = grimoire._parse_srcinfo_metadata(grimoire.read_srcinfo(pkg_dir))
 		self.assertEqual(version, "2.5-1")
@@ -198,8 +186,8 @@ class OriginSwitchTests(unittest.TestCase):
 			(repo / "PKGBUILD").write_text(f"pkgname=foo\npkgver={who}\n")
 			_git(repo, "add", "-A")
 			_git(repo, "commit", "-qm", "x")
-		for name in ("SHALLOW_CLONE", "USE_SSH"):
-			patcher = mock.patch.object(grimoire, name, False)
+		for name in ("shallow_clone", "use_ssh"):
+			patcher = mock.patch.object(grimoire.CONFIG, name, False)
 			patcher.start()
 			self.addCleanup(patcher.stop)
 
@@ -208,21 +196,21 @@ class OriginSwitchTests(unittest.TestCase):
 
 	def test_switching_source_reclones(self) -> None:
 		d1 = grimoire.ensure_clone(
-			"foo", self.dest, refresh=False, repo_url=f"file://{self.a}"
+			"foo", self.dest, grimoire.CloneSource(f"file://{self.a}"), refresh=False
 		)
 		self.assertEqual(self._ver(d1), "a")
 		# same dest/package, different source URL -> origin mismatch -> reclone from b
 		d2 = grimoire.ensure_clone(
-			"foo", self.dest, refresh=False, repo_url=f"file://{self.b}"
+			"foo", self.dest, grimoire.CloneSource(f"file://{self.b}"), refresh=False
 		)
 		self.assertEqual(self._ver(d2), "b")
 
 	def test_same_source_reuses(self) -> None:
 		grimoire.ensure_clone(
-			"foo", self.dest, refresh=False, repo_url=f"file://{self.a}"
+			"foo", self.dest, grimoire.CloneSource(f"file://{self.a}"), refresh=False
 		)
 		d = grimoire.ensure_clone(
-			"foo", self.dest, refresh=False, repo_url=f"file://{self.a}"
+			"foo", self.dest, grimoire.CloneSource(f"file://{self.a}"), refresh=False
 		)
 		self.assertEqual(self._ver(d), "a")
 
@@ -315,7 +303,7 @@ class SearchRepoTests(unittest.TestCase):
 		# No sync DB to fall back on -> templated alias has nothing to enumerate.
 		with (
 			mock.patch.object(grimoire, "_sync_db_packages", return_value=()),
-			self.assertRaises(grimoire.AurGitError),
+			self.assertRaises(grimoire.GrimoireErr),
 		):
 			grimoire.search_packages_repo(
 				"https://x/{pkg}.git",
@@ -366,8 +354,8 @@ class SparseCloneTests(unittest.TestCase):
 		tmp = tempfile.TemporaryDirectory()
 		self.addCleanup(tmp.cleanup)
 		self.root = Path(tmp.name)
-		for name in ("SHALLOW_CLONE", "USE_SSH"):
-			patcher = mock.patch.object(grimoire, name, False)
+		for name in ("shallow_clone", "use_ssh"):
+			patcher = mock.patch.object(grimoire.CONFIG, name, False)
 			patcher.start()
 			self.addCleanup(patcher.stop)
 
@@ -386,7 +374,7 @@ class SparseCloneTests(unittest.TestCase):
 		src = self._flat()
 		dest = self.root / "d1"
 		build = grimoire.ensure_clone(
-			"foo", dest, refresh=False, repo_url=f"file://{src}"
+			"foo", dest, grimoire.CloneSource(f"file://{src}"), refresh=False
 		)
 		self.assertEqual(build, dest / "foo" / "foo")
 		self.assertTrue((build / "PKGBUILD").is_file())
@@ -398,7 +386,7 @@ class SparseCloneTests(unittest.TestCase):
 		# not a full checkout: the source resolves as "not found" and leaves nothing.
 		src = self._flat()
 		dest = self.root / "dmiss"
-		with self.assertRaises(grimoire.AurGitError) as ctx:
+		with self.assertRaises(grimoire.GrimoireErr) as ctx:
 			grimoire._clone_any_source(
 				"baz", dest, [(f"file://{src}", None, None, [])], refresh=False
 			)
@@ -416,7 +404,10 @@ class SparseCloneTests(unittest.TestCase):
 		_git(src, "commit", "-qm", "x")
 		dest = self.root / "d2"
 		build = grimoire.ensure_clone(
-			"foo", dest, refresh=False, repo_url=f"file://{src}", subdir="pkgs"
+			"foo",
+			dest,
+			grimoire.CloneSource(f"file://{src}", None, "pkgs"),
+			refresh=False,
 		)
 		self.assertEqual(build, dest / "foo" / "pkgs" / "foo")
 		self.assertFalse((dest / "foo" / "pkgs" / "bar").exists())
@@ -429,9 +420,12 @@ class SparseCloneTests(unittest.TestCase):
 		_git(src, "init", "-q", "-b", "master")
 		_git(src, "add", "-A")
 		_git(src, "commit", "-qm", "x")
-		with self.assertRaises(grimoire.AurGitError) as ctx:
+		with self.assertRaises(grimoire.GrimoireErr) as ctx:
 			grimoire.ensure_clone(
-				"foo", self.root / "d_miss", refresh=False, repo_url=f"file://{src}"
+				"foo",
+				self.root / "d_miss",
+				grimoire.CloneSource(f"file://{src}"),
+				refresh=False,
 			)
 		self.assertIn("--subdir pkgs", str(ctx.exception))
 
@@ -448,7 +442,7 @@ class SparseCloneTests(unittest.TestCase):
 		_git(src, "commit", "-qm", "x")
 		dest = self.root / "d3"
 		build = grimoire.ensure_clone(
-			"foo", dest, refresh=False, repo_url=f"file://{src}"
+			"foo", dest, grimoire.CloneSource(f"file://{src}"), refresh=False
 		)
 		self.assertEqual(build, dest / "foo")
 		self.assertTrue((build / "PKGBUILD").is_file())
@@ -474,9 +468,8 @@ class SparseCloneTests(unittest.TestCase):
 			build = grimoire.ensure_clone(
 				name,
 				self.root / f"d_{name}",
+				grimoire.CloneSource(f"file://{src}", name),
 				refresh=False,
-				repo_url=f"file://{src}",
-				branch=name,
 			)
 			pkgname = (
 				(build / "PKGBUILD").read_text().split("pkgname=")[1].split("\n")[0]
@@ -587,12 +580,12 @@ class CloneAnySourceTests(unittest.TestCase):
 			_git(repo, "add", "-A")
 			_git(repo, "commit", "-qm", "x")
 		self.bad = "file:///definitely/not/here.git"
-		for name in ("SHALLOW_CLONE", "USE_SSH"):
-			patcher = mock.patch.object(grimoire, name, False)
+		for name in ("shallow_clone", "use_ssh"):
+			patcher = mock.patch.object(grimoire.CONFIG, name, False)
 			patcher.start()
 			self.addCleanup(patcher.stop)
 
-	def _src(self, url: str) -> tuple[str, None, None, list]:
+	def _src(self, url: str) -> tuple[str, None, None, list[object]]:
 		return (url, None, None, [])
 
 	def test_first_with_pkgbuild_wins(self) -> None:
@@ -624,7 +617,7 @@ class CloneAnySourceTests(unittest.TestCase):
 		self.assertTrue((pkg_dir / "PKGBUILD").is_file())
 
 	def test_all_sources_fail_raises(self) -> None:
-		with self.assertRaises(grimoire.AurGitError) as ctx:
+		with self.assertRaises(grimoire.GrimoireErr) as ctx:
 			grimoire._clone_any_source(
 				"foo",
 				self.dest,
@@ -649,11 +642,37 @@ class VerifyCommitTests(unittest.TestCase):
 		_git(self.repo, "commit", "-qm", "unsigned")
 
 	def test_unsigned_head_raises(self) -> None:
-		# No ref -> commit path.
-		with self.assertRaises(grimoire.AurGitError) as ctx:
+		# No ref -> commit path. A real unsigned commit produces no gpg output, so it's
+		# classified as genuinely unsigned (not "missing key").
+		with self.assertRaises(grimoire.GrimoireErr) as ctx:
 			grimoire._verify_signature(self.repo, "foo")
-		self.assertIn("signature verification failed", str(ctx.exception))
-		self.assertIn("HEAD commit", str(ctx.exception))
+		msg = str(ctx.exception)
+		self.assertIn("signature verification failed", msg)
+		self.assertIn("HEAD commit", msg)
+		self.assertIn("unsigned", msg)
+
+	def test_signed_but_missing_key_is_distinguished(self) -> None:
+		# gpg saw a signature but lacks the public key: report it as signed (not unsigned)
+		# and surface the key id to import. Mock the verify call's captured output.
+		gpg = (
+			"gpg: Signature made Mon 15 Jun 2026 06:34:08 PM CEST\n"
+			"gpg:                using RSA key B5690EEEBB952194\n"
+			"gpg: Can't check signature: No public key\n"
+		)
+		with (
+			mock.patch.object(
+				grimoire.subprocess,
+				"run",
+				return_value=mock.Mock(returncode=1, stdout="", stderr=gpg),
+			),
+			self.assertRaises(grimoire.GrimoireErr) as ctx,
+		):
+			grimoire._verify_signature(self.repo, "foo")
+		msg = str(ctx.exception)
+		self.assertIn("is signed", msg)
+		self.assertIn("not in your keyring", msg)
+		self.assertNotIn("unsigned", msg)
+		self.assertIn("gpg --recv-keys B5690EEEBB952194", msg)
 
 	def test_ref_is_annotated_tag(self) -> None:
 		_git(self.repo, "tag", "-a", "v1", "-m", "release")  # annotated
@@ -664,31 +683,43 @@ class VerifyCommitTests(unittest.TestCase):
 
 	def test_tag_ref_takes_tag_path(self) -> None:
 		_git(self.repo, "tag", "-a", "v1", "-m", "release")  # annotated, unsigned
-		with self.assertRaises(grimoire.AurGitError) as ctx:
+		with self.assertRaises(grimoire.GrimoireErr) as ctx:
 			grimoire._verify_signature(self.repo, "foo", "v1")
 		self.assertIn("tag v1", str(ctx.exception))
 
 	def test_branch_ref_uses_commit_path(self) -> None:
 		# A branch ref is not a tag object -> commit path (message names the commit).
-		with self.assertRaises(grimoire.AurGitError) as ctx:
+		with self.assertRaises(grimoire.GrimoireErr) as ctx:
 			grimoire._verify_signature(self.repo, "foo", "master")
 		self.assertIn("HEAD commit", str(ctx.exception))
 
 	def test_valid_signature_passes(self) -> None:
 		# A good verify exit (0) returns without raising; mock the git call so the test
 		# needs no GPG key. No ref -> commit path.
-		with mock.patch.object(grimoire, "run_command", return_value=""):
+		with mock.patch.object(
+			grimoire.subprocess,
+			"run",
+			return_value=mock.Mock(returncode=0, stdout="", stderr=""),
+		):
 			grimoire._verify_signature(self.repo, "foo")
 
 	def test_min_trust_adds_gpg_config(self) -> None:
-		with mock.patch.object(grimoire, "run_command", return_value="") as rc:
+		with mock.patch.object(
+			grimoire.subprocess,
+			"run",
+			return_value=mock.Mock(returncode=0, stdout="", stderr=""),
+		) as rc:
 			grimoire._verify_signature(self.repo, "foo", None, "fully")
 		cmd = rc.call_args_list[-1].args[0]
 		self.assertIn("verify-commit", cmd)
 		self.assertIn("gpg.minTrustLevel=fully", cmd)
 
 	def test_no_min_trust_omits_gpg_config(self) -> None:
-		with mock.patch.object(grimoire, "run_command", return_value="") as rc:
+		with mock.patch.object(
+			grimoire.subprocess,
+			"run",
+			return_value=mock.Mock(returncode=0, stdout="", stderr=""),
+		) as rc:
 			grimoire._verify_signature(self.repo, "foo")
 		cmd = rc.call_args_list[-1].args[0]
 		self.assertFalse(any("minTrustLevel" in part for part in cmd))

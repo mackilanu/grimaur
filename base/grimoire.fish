@@ -1,7 +1,7 @@
 # Fish completion for grimoire helper
 # Place in ~/.config/fish/completions/ or /usr/share/fish/vendor_completions.d/
 
-set -l commands fetch install remove update search inspect list repo
+set -l commands fetch install remove build update search inspect list repo
 
 # Complete AUR names from the cache grimoire writes alongside packages.json;
 # seed it in the background on first use.
@@ -25,14 +25,15 @@ end
 complete -c grimoire -f
 
 # Subcommands
-complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a fetch -d 'Clone the package branch locally'
+complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a fetch -d 'Clone a package locally'
 complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a install -d 'Resolve dependencies and build/install a package'
 complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a remove -d 'Remove an installed package'
+complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a build -d 'Build+install a fetched (possibly edited) package, no re-clone'
 complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a update -d 'Upgrade installed foreign packages'
 complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a search -d 'Search packages via the configured backend'
 complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a inspect -d 'Show PKGBUILD or dependency information'
 complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a list -d 'List installed foreign (AUR) packages'
-complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a repo -d 'Manage repo URL aliases in repos.conf'
+complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a repo -d 'Manage repo URL aliases in repos.ini'
 
 # Global flags (valid before or after the subcommand)
 complete -c grimoire -l dest-root -x -a "(__fish_complete_directories (commandline -ct))" -d 'Directory to store cloned packages'
@@ -48,8 +49,8 @@ complete -c grimoire -n '__fish_seen_subcommand_from fetch install update search
 complete -c grimoire -n '__fish_seen_subcommand_from fetch install update search inspect' -l subdir -x -d 'Build from this subdirectory of the repo'
 complete -c grimoire -n '__fish_seen_subcommand_from fetch install update search inspect' -l rev -x -d 'Git revision to check out: branch, tag, or commit'
 
-# --noconfirm (install / remove / update / search)
-complete -c grimoire -n '__fish_seen_subcommand_from install remove update search' -l noconfirm -d 'Skip confirmation prompts'
+# --noconfirm (install / remove / build / update / search)
+complete -c grimoire -n '__fish_seen_subcommand_from install remove build update search' -l noconfirm -d 'Skip confirmation prompts'
 
 # --verify (fetch / install)
 complete -c grimoire -n '__fish_seen_subcommand_from fetch install' -l verify -d 'Require a valid GPG signature (git verify-tag/-commit; no trust check)'
@@ -82,4 +83,4 @@ complete -c grimoire -n '__fish_seen_subcommand_from repo' -l ls -d 'List regist
 
 # Package positionals
 complete -c grimoire -n '__fish_seen_subcommand_from install fetch inspect search' -a '(__grimoire_aur_packages)'
-complete -c grimoire -n '__fish_seen_subcommand_from remove update' -a '(__grimoire_foreign_packages)' -d 'installed'
+complete -c grimoire -n '__fish_seen_subcommand_from remove update build' -a '(__grimoire_foreign_packages)' -d 'installed'

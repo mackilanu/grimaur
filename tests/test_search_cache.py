@@ -15,7 +15,7 @@ class CacheHelperTests(unittest.TestCase):
 	def setUp(self) -> None:
 		tmp = tempfile.TemporaryDirectory()
 		self.addCleanup(tmp.cleanup)
-		patcher = mock.patch.object(grimoire, "CACHE_DIR", Path(tmp.name))
+		patcher = mock.patch.object(grimoire.CONFIG, "cache_dir", Path(tmp.name))
 		patcher.start()
 		self.addCleanup(patcher.stop)
 
@@ -27,20 +27,20 @@ class CacheHelperTests(unittest.TestCase):
 		self.assertIsNone(grimoire.cache_get("nope.json", ttl=60))
 
 	def test_disabled_when_cache_dir_unset(self) -> None:
-		with mock.patch.object(grimoire, "CACHE_DIR", None):
+		with mock.patch.object(grimoire.CONFIG, "cache_dir", None):
 			grimoire.cache_put("search/abc.json", '{"ok": 1}')
 			self.assertIsNone(grimoire.cache_get("search/abc.json", ttl=60))
 
 	def test_miss_when_expired(self) -> None:
 		grimoire.cache_put("packages.list", "foo\nbar")
 		stale = time.time() - 120
-		os.utime(grimoire.CACHE_DIR / "packages.list", (stale, stale))
+		os.utime(grimoire.CONFIG.cache_dir / "packages.list", (stale, stale))
 		self.assertIsNone(grimoire.cache_get("packages.list", ttl=60))
 
 	def test_clear_search_cache_removes_dir(self) -> None:
 		# subdir, so the enclosing TemporaryDirectory survives the rmtree
-		sub = grimoire.CACHE_DIR / ".searchcache"
-		with mock.patch.object(grimoire, "CACHE_DIR", sub):
+		sub = grimoire.CONFIG.cache_dir / ".searchcache"
+		with mock.patch.object(grimoire.CONFIG, "cache_dir", sub):
 			grimoire.cache_put("search/abc.json", '{"ok": 1}')
 			grimoire.clear_search_cache()
 			self.assertFalse(sub.exists())
@@ -49,7 +49,7 @@ class CacheHelperTests(unittest.TestCase):
 
 	def test_expired_entry_is_pruned(self) -> None:
 		grimoire.cache_put("packages.list", "foo\nbar")
-		path = grimoire.CACHE_DIR / "packages.list"
+		path = grimoire.CONFIG.cache_dir / "packages.list"
 		stale = time.time() - 120
 		os.utime(path, (stale, stale))
 		grimoire.cache_get("packages.list", ttl=60)
@@ -60,7 +60,7 @@ class CachedJsonTests(unittest.TestCase):
 	def setUp(self) -> None:
 		tmp = tempfile.TemporaryDirectory()
 		self.addCleanup(tmp.cleanup)
-		patcher = mock.patch.object(grimoire, "CACHE_DIR", Path(tmp.name))
+		patcher = mock.patch.object(grimoire.CONFIG, "cache_dir", Path(tmp.name))
 		patcher.start()
 		self.addCleanup(patcher.stop)
 
@@ -85,15 +85,15 @@ class CachedJsonTests(unittest.TestCase):
 		fetch.assert_called_once()
 
 	def test_zero_ttl_refetches_and_repopulates(self) -> None:
-		# --refresh sets CACHE_TTL=0: every read expires, writes still land
+		# --refresh sets CONFIG.cache_ttl=0: every read expires, writes still land
 		grimoire.cache_put("k.json", '{"stale": 1}')
 		stale = time.time() - 1
-		os.utime(grimoire.CACHE_DIR / "k.json", (stale, stale))
+		os.utime(grimoire.CONFIG.cache_dir / "k.json", (stale, stale))
 		fetch = mock.Mock(return_value={"fresh": 1})
 		self.assertEqual(grimoire.cached_json("k.json", 0, fetch), {"fresh": 1})
 		fetch.assert_called_once()
 		self.assertEqual(
-			json.loads((grimoire.CACHE_DIR / "k.json").read_text()), {"fresh": 1}
+			json.loads((grimoire.CONFIG.cache_dir / "k.json").read_text()), {"fresh": 1}
 		)
 
 
@@ -127,7 +127,9 @@ class NameSourceSelectionTests(unittest.TestCase):
 		self.addCleanup(tmp.cleanup)
 		# completion.cache (names only) lands in dest_root, sibling of .searchcache
 		with (
-			mock.patch.object(grimoire, "CACHE_DIR", Path(tmp.name) / ".searchcache"),
+			mock.patch.object(
+				grimoire.CONFIG, "cache_dir", Path(tmp.name) / ".searchcache"
+			),
 			mock.patch.object(
 				grimoire,
 				"_fetch_aur_meta",
@@ -145,11 +147,11 @@ class GitSearchCacheTests(unittest.TestCase):
 		tmp = tempfile.TemporaryDirectory()
 		self.addCleanup(tmp.cleanup)
 		self.cache_dir = Path(tmp.name)
-		for target, value in (
-			("CACHE_DIR", self.cache_dir),
-			("installed_package_set", mock.Mock(return_value=set())),
+		for obj, target, value in (
+			(grimoire.CONFIG, "cache_dir", self.cache_dir),
+			(grimoire, "installed_package_set", mock.Mock(return_value=set())),
 		):
-			patcher = mock.patch.object(grimoire, target, value)
+			patcher = mock.patch.object(obj, target, value)
 			patcher.start()
 			self.addCleanup(patcher.stop)
 

@@ -4,7 +4,7 @@
 <img align="left" src="./base/assets/grimoire_l.svg#gh-dark-mode-only" width="80" alt="grimoire logo">
 
 `grimoire` is a lightweight package builder for Arch. It searches, builds, and updates packages
-because it drives `git` & `makepkg`, it can build `PKGBUILD`s from **any git source you point it at.**
+because it drives `git` & `makepkg`, it can build [`PKGBUILD`](https://wiki.archlinux.org/title/PKGBUILD) from **any git source you point it at.**
 
 <br clear="left">
 
@@ -49,28 +49,28 @@ Also accepts: `SRCINFO`
 
 ### Build from other sources
 
-With no `--repo`, sources are tried in `repos.conf` order (top first); the first that has
-the package wins, the rest are fallbacks. `repos.conf` is auto-seeded to `[ARCH]` official Gitlab.
+With no `--repo`, sources are tried in `repos.ini` order (top first); the first that has
+the package wins, the rest are fallbacks. `repos.ini` is auto-seeded to `[ARCH]` official Gitlab.
 Point at anything else that ships a `PKGBUILD` with `--repo-url`/`--repo` on
 `install`, `fetch`, `inspect`, `search`, and `update`:
    - `--repo-url <url>` builds from a git URL (scheme optional: `provider.ext/u/r` works).
    - `--rev <branch|tag|commit>` / `--subdir <dir>` pick a revision, or a package nested in a monorepo
    - `repo --add <url> <name>` saves an alias; use it with `--repo <name>`.
-   - Add more URLs under the same name for fallback mirrors. `--ls`/`--rm` to manage. Saved to `~/.config/grimoire/repos.conf`
+   - Add more URLs under the same name for fallback mirrors. `--ls`/`--rm` to manage. Saved to `~/.config/grimoire/repos.ini`
    - `{pkg}` (the package name) or `{pkgbase}` (its pkgbase, looked up from the pacman sync DBs)
 
    ```bash
    grimoire repo --add 'github.com/h8d13/VUR/tree/master/pkgs' VUR
    grimoire install <pkg>
    ```
-A bare `search <term>` queries **every** section in `repos.conf` and merges the results.
+A bare `search <term>` queries **every** section in `repos.ini` and merges the results.
 `--repo <name>` searches only this specific repo and precedes the `.conf`.
 
-See [`repos.conf.example`](./repos.conf.example) for examples.
+See [`repos.ini.example`](./repos.ini.example) for examples.
 
 Section order is precedence: `install`/`fetch`/`inspect`/`update` walk sections top to
 bottom and build from the first that has the package. On first use, **auto-creates**
-`~/.config/grimoire/repos.conf` with `[ARCH]` as the default.
+`~/.config/grimoire/repos.ini` with `[ARCH]` as the default.
 
 ### Stay Updated
 
@@ -108,6 +108,22 @@ bottom and build from the first that has the package. On first use, **auto-creat
 - Respects `IgnorePkg = x y z` from `/etc/pacman.conf`
 - Pass `--noconfirm` to skip prompts (install, update, remove, and search)
 - Completions are also [available](./base/) and have cached search complete.
+
+#### Sources/References:
+
+- Arch Package [Guidelines](https://wiki.archlinux.org/title/Arch_package_guidelines)
+- Man pages:
+- [git.1](https://www.kernel.org/pub/software/scm/git/docs/git.html)
+- [makepkg.8](https://man.archlinux.org/man/makepkg.8) 
+- [PKGBUILD.5](https://man.archlinux.org/man/PKGBUILD.5)
+- [pacman.8]https://man.archlinux.org/man/pacman.8
+- [vercmp.8]https://man.archlinux.org/man/vercmp.8
+- [find-libprovides.1](https://man.archlinux.org/man/find-libprovides.1)
+- [updpkgsums.8](https://man.archlinux.org/man/updpkgsums.8)
+
+- Examples [proto](https://gitlab.archlinux.org/pacman/pacman/-/tree/master/proto)
+- `pacman-contrib` https://archlinux.org/packages/extra/x86_64/pacman-contrib/
+- `devtools` https://archlinux.org/packages/extra/any/devtools/
 
 ### Cryptographic trust
 

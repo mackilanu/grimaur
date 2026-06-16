@@ -10,7 +10,7 @@ cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/grimoire/.searchcache"
 grimoire="$(cd "$(dirname "$0")/.." && pwd)/grimoire"
 
 # Scope to --repo AUR so this measures the dump path, not whatever else is in the
-# user's repos.conf (a bare `search` aggregates every section, cloning custom aliases).
+# user's repos.ini (a bare `search` aggregates every section, cloning custom aliases).
 for pattern in python firefox; do
 	echo "== $pattern: cold (cache cleared) =="
 	rm -rf "$cache_dir"

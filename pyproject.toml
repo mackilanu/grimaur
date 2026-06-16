@@ -7,13 +7,15 @@ requires-python = ">=3.14"
 target-version = "py314"
 line-length = 88
 extend-include = ["grimoire"]
+# Honor format's exclude of `grimoire` even when the path is passed explicitly
+# (e.g. by pre-commit / `ruff format grimoire`), not only during directory discovery.
+force-exclude = true
 
 [tool.ruff.lint]
 select = ["E", "F", "B", "I", "UP", "W", "TC", "PERF", "S", "PLW", "SIM", "PTH", "RUF", "FURB", "A", "ISC", "C901"]
 ignore = [
     "E501",
     "W191",
-    "PLW0603",  # global-statement: module-level config flags are intentional (cf. pylint W0603 disable)
 ]
 
 # Complexity ceiling as a ratchet: blocks new sprawl without forcing the small
@@ -27,25 +29,44 @@ max-complexity = 20
 
 [tool.ruff.format]
 indent-style = "tab"
+# `grimoire` is hand-aligned for readability (tab-aligned fields/constants); the formatter
+# would collapse that. Lint it (extend-include above) but never auto-format it.
+exclude = ["grimoire"]
 
 [tool.mypy]
 python_version = "3.14"
-warn_return_any = true
-warn_unused_ignores = true
-disallow_untyped_defs = true
-disallow_any_unimported = false
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_configs = true
-check_untyped_defs = true
+files = ["grimoire"]
+scripts_are_modules = true  # grimoire has no .py extension
+strict = true
+
+[tool.pyright]
+include = ["grimoire", "tests"]
+pythonVersion = "3.14"
+typeCheckingMode = "strict"
 
 [tool.pylint.messages_control]
 disable = [
     "C0114",  # missing-module-docstring
     "C0115",  # missing-class-docstring
     "C0116",  # missing-function-docstring
-    "W0603",  # global-statement
+    "C0301",  # line-too-long: ruff owns line length (E501 ignored there)
+    "C0302",  # too-many-lines: intentional single-file program
+    "C0415",  # import-outside-toplevel: deliberate lazy imports (startup cost)
+    "W1514",  # unspecified-encoding: codebase relies on the UTF-8 default (Arch tooling)
 ]
+
+# Keep the design metrics ON, but align their thresholds with the ruff C901 ratchet
+# (max-complexity=20) and the codebase's actual orchestrators, so the two tools agree
+# instead of double-reporting. Functions still over these (only main, the dispatch) carry
+# a targeted inline disable, the same way main already carries `# noqa: C901`.
+[tool.pylint.design]
+max-args = 13        # install_package: the central recursive orchestrator's keyword options
+max-locals = 25
+max-branches = 20    # == ruff C901
+max-statements = 80  # covers build_parser's flat argparse setup
+max-returns = 8
+max-attributes = 10  # SearchResult is an 8-field display/install DTO
 
 [tool.pylint.format]
 max-line-length = 88
+indent-string = "\t"  # the codebase indents with tabs (cf. ruff W191 ignore)

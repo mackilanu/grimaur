@@ -88,7 +88,7 @@ class ListRepoTests(unittest.TestCase):
 		with (
 			unittest.mock.patch.object(grimoire, "_aur_enabled", return_value=True),
 			unittest.mock.patch.object(grimoire, "aur_packages", return_value=[]),
-			self.assertRaises(grimoire.AurGitError),
+			self.assertRaises(grimoire.GrimoireErr),
 		):
 			grimoire.list_repo_packages("AUR", Path("/unused"))
 

@@ -67,27 +67,26 @@ pkgname = examplepkg
 
 
 class ParseDependenciesTests(unittest.TestCase):
-	def test_returns_pkgbase_and_desc(self) -> None:
-		pkgbase, desc, _deps = grimoire.parse_dependencies(SAMPLE_SRCINFO)
-		self.assertEqual(pkgbase, "examplepkg")
+	def test_returns_desc(self) -> None:
+		desc, _deps = grimoire.parse_dependencies(SAMPLE_SRCINFO)
 		self.assertEqual(desc, "An example package for tests")
 
 	def test_depends_are_normalized(self) -> None:
-		_pkgbase, _desc, deps = grimoire.parse_dependencies(SAMPLE_SRCINFO)
+		_desc, deps = grimoire.parse_dependencies(SAMPLE_SRCINFO)
 		self.assertEqual(
 			deps.depends,
 			{"python", "requests", "whitespace-pkg"},
 		)
 
 	def test_makedepends_and_checkdepends_normalized(self) -> None:
-		_pkgbase, _desc, deps = grimoire.parse_dependencies(SAMPLE_SRCINFO)
+		_desc, deps = grimoire.parse_dependencies(SAMPLE_SRCINFO)
 		self.assertEqual(deps.makedepends, {"git", "python-build"})
 		self.assertEqual(deps.checkdepends, {"python-pytest"})
 
 	def test_optdepends_keep_descriptions_verbatim(self) -> None:
 		# The whole point of the asymmetry: opt-deps include human-readable
 		# descriptions, normalising them would destroy that.
-		_pkgbase, _desc, deps = grimoire.parse_dependencies(SAMPLE_SRCINFO)
+		_desc, deps = grimoire.parse_dependencies(SAMPLE_SRCINFO)
 		self.assertEqual(
 			deps.optdepends,
 			{
@@ -97,12 +96,12 @@ class ParseDependenciesTests(unittest.TestCase):
 		)
 
 	def test_missing_pkgbase_raises(self) -> None:
-		with self.assertRaises(grimoire.AurGitError):
+		with self.assertRaises(grimoire.GrimoireErr):
 			grimoire.parse_dependencies("pkgname = nope\ndepends = python\n")
 
 	def test_comments_and_blank_lines_ignored(self) -> None:
 		srcinfo = "pkgbase = x\n\n# comment\n\tdepends = foo\n"
-		_pkgbase, _desc, deps = grimoire.parse_dependencies(srcinfo)
+		_desc, deps = grimoire.parse_dependencies(srcinfo)
 		self.assertEqual(deps.depends, {"foo"})
 
 

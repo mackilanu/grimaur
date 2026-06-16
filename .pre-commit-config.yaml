@@ -15,4 +15,14 @@ repos:
     rev: v2.1.0
     hooks:
     - id: mypy
+      args: [--strict]
       fail_fast: true
+  - repo: local
+    hooks:
+      - id: outline
+        name: refresh embedded code outline
+        entry: tools/outline grimoire
+        language: system
+        files: ^grimoire$
+        pass_filenames: false
+
