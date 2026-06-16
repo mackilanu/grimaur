@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 """Refresh a code outline at the end of a Python file, between marker comments.
-
+Use pre-commit to not drift.
 Walks the AST (classes, functions, nested closures) and writes a commented tree
-between the `#h8d13washere` and `#############` markers at EOF. Idempotent: the marker
-block is comments, so it never affects the parse, and re-running regenerates it in place.
-
-	Usage: tools/outline <python-file>
+between the `#h8d13washere` and `#############` markers at EOF.
 """
 
 import ast
