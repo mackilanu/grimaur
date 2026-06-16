@@ -583,5 +583,117 @@ class AddRemovePreserveCommentsTests(unittest.TestCase):
 		self.assertIn("ARCH", grimoire.load_repo_registry())
 
 
+class ForgeRawUrlTests(unittest.TestCase):
+	"""Raw-file URL for the HTTP existence probe; unmapped hosts return None."""
+
+	def test_github_maps_to_raw_githubusercontent(self) -> None:
+		self.assertEqual(
+			grimoire._forge_raw_url(
+				"https://github.com/h8d13/VUR.git", "master", "pkgs/base/PKGBUILD"
+			),
+			"https://raw.githubusercontent.com/h8d13/VUR/master/pkgs/base/PKGBUILD",
+		)
+
+	def test_gitlab_uses_dash_raw_and_keeps_nested_groups(self) -> None:
+		self.assertEqual(
+			grimoire._forge_raw_url(
+				"https://gitlab.archlinux.org/archlinux/packaging/packages/base.git",
+				"main",
+				"PKGBUILD",
+			),
+			"https://gitlab.archlinux.org/archlinux/packaging/packages/base/-/raw/main/PKGBUILD",
+		)
+
+	def test_bitbucket_and_gitea_share_raw(self) -> None:
+		# Bitbucket + Gitea/Forgejo share /raw/<ref>/ (urlopen follows Gitea's 303).
+		for host in ("bitbucket.org", "codeberg.org", "gitea.com"):
+			with self.subTest(host=host):
+				self.assertEqual(
+					grimoire._forge_raw_url(
+						f"https://{host}/ws/repo.git", "master", "foo/PKGBUILD"
+					),
+					f"https://{host}/ws/repo/raw/master/foo/PKGBUILD",
+				)
+
+	def test_unmapped_hosts_return_none(self) -> None:
+		# Self-hosted host or scp-form: no HTTP shortcut, resolution uses the git probe.
+		for url in (
+			"https://v15.next.forgejo.org/o/r.git",
+			"git@github.com:h8d13/VUR.git",
+		):
+			with self.subTest(url=url):
+				self.assertIsNone(grimoire._forge_raw_url(url, "main", "PKGBUILD"))
+
+
+class RemotePkgbuildPresentTests(unittest.TestCase):
+	"""HTTP fast-fail decision with _http_status mocked: True/False/None."""
+
+	def _patch_status(self, table: dict[str, int | None]) -> None:
+		# Map raw URL -> HTTP status; anything unlisted is a 404.
+		def fake(url: str) -> int | None:
+			return table.get(url, 404)
+
+		patcher = mock.patch.object(grimoire, "_http_status", side_effect=fake)
+		patcher.start()
+		self.addCleanup(patcher.stop)
+
+	def test_subdir_container_hit(self) -> None:
+		raw = "https://raw.githubusercontent.com/h8d13/VUR/master/pkgs/grimoire-git/PKGBUILD"
+		self._patch_status({raw: 200})
+		self.assertIs(
+			grimoire._remote_pkgbuild_present(
+				"https://github.com/h8d13/VUR.git", "master", "pkgs", "grimoire-git"
+			),
+			True,
+		)
+
+	def test_subdir_container_miss_is_false(self) -> None:
+		# Every candidate path 404s -> confirmed absent, skip the clone.
+		self._patch_status({})
+		self.assertIs(
+			grimoire._remote_pkgbuild_present(
+				"https://github.com/h8d13/VUR.git", "master", "pkgs", "base"
+			),
+			False,
+		)
+
+	def test_flat_repo_hit_at_root_subdir(self) -> None:
+		raw = "https://raw.githubusercontent.com/kth5/archpower/master/7zip/PKGBUILD"
+		self._patch_status({raw: 200})
+		self.assertIs(
+			grimoire._remote_pkgbuild_present(
+				"https://github.com/kth5/archpower.git", "master", None, "7zip"
+			),
+			True,
+		)
+
+	def test_no_ref_is_inconclusive(self) -> None:
+		self.assertIsNone(
+			grimoire._remote_pkgbuild_present(
+				"https://github.com/h8d13/VUR.git", None, "pkgs", "base"
+			)
+		)
+
+	def test_unmapped_host_is_inconclusive(self) -> None:
+		self.assertIsNone(
+			grimoire._remote_pkgbuild_present(
+				"https://v15.next.forgejo.org/o/r.git", "main", None, "foo"
+			)
+		)
+
+	def test_network_error_is_inconclusive(self) -> None:
+		# A non-404 / network-level result must not be read as "absent".
+		self._patch_status(
+			{
+				"https://raw.githubusercontent.com/h8d13/VUR/master/pkgs/base/PKGBUILD": None
+			}
+		)
+		self.assertIsNone(
+			grimoire._remote_pkgbuild_present(
+				"https://github.com/h8d13/VUR.git", "master", "pkgs", "base"
+			)
+		)
+
+
 if __name__ == "__main__":
 	unittest.main()

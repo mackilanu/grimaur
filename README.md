@@ -25,8 +25,8 @@ because it drives `git` & `makepkg`, it can build [`PKGBUILD`](https://wiki.arch
 > You can use `grimoire fetch <package>` to inspect `PKGBUILD` and source code before
 > manually installing using `makepkg` or similar.
 
-Even see it directly: `python grimoire inspect brave-bin --target PKGBUILD`
-Also accepts: `SRCINFO`
+Even see it directly: `python grimoire inspect base --target PKGBUILD`
+Also accepts: `SRCINFO` and `info`
 
 ## Usage
 
