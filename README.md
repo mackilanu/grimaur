@@ -40,7 +40,8 @@ Also accepts: `SRCINFO` and `info`
 `inspect`, `install`, `fetch`, and `remove` accept one or more packages (`grimoire install a b c`).
 
 - `grimoire inspect <package>` shows description + all deps (make/check/optional)
-- `grimoire install <package>` clones the repo, resolves dependencies, builds with `makepkg`
+- `grimoire install <package>` clones the repo, resolves dependencies, builds
+   - Pass `--noconfirm` to skip prompts (install, update, remove, and search)
    - Pass `--use-ssh` use SSH instead of HTTPS
    - Pass `--submod` (install/fetch) to init the repo's git submodules after checkout.
 - `grimoire remove <package>` to uninstall from pacman
@@ -61,7 +62,7 @@ Point at anything else that ships a `PKGBUILD` with `--repo-url`/`--repo` on
    - `{pkg}` (the package name) or `{pkgbase}` (its pkgbase ex: amd-ucode -> linux-firmware)
 
    ```bash
-   grimoire repo --add 'provider.ext/user/repo/tree/master/pkgs' VUR
+   grimoire repo --add 'provider.ext/user/repo/tree/master/pkgs' MYVUR
    grimoire install <pkg>
    ```
 A bare `search <term>` queries **every** section in `repos.ini` and merges the results.
@@ -109,7 +110,6 @@ On first use, **auto-creates** `~/.config/grimoire/repos.ini` with `[ARCH]` as t
 ### More info
 
 - Respects `IgnorePkg = x y z` from `/etc/pacman.conf`
-- Pass `--noconfirm` to skip prompts (install, update, remove, and search)
 - Completions are also [available](./base/) and have cached search complete.
 
 #### Sources/References:
@@ -130,7 +130,7 @@ Tools:
 
 Packaging examples [proto](https://gitlab.archlinux.org/pacman/pacman/-/tree/master/proto)
 
-### Cryptographic trust
+### Git-GPG Trust
 
 - Pass `--verify` (`install`/`fetch`) to require a valid GPG signature before building.
 If you point at an annotated tag (`--rev <tag>`) it runs `git verify-tag`, else `git verify-commit`
