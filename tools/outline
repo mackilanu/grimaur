@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""Refresh a code outline at the end of a Python file, between marker comments.
+
+Walks the AST (classes, functions, nested closures) and writes a commented tree
+between the `#h8d13washere` and `#############` markers at EOF. Idempotent: the marker
+block is comments, so it never affects the parse, and re-running regenerates it in place.
+
+	Usage: tools/outline <python-file>
+"""
+
+import ast
+import sys
+from pathlib import Path
+
+START = "#h8d13washere"
+END = "#############"
+_KIND = {
+	ast.ClassDef: "class",
+	ast.FunctionDef: "def",
+	ast.AsyncFunctionDef: "async def",
+}
+
+
+def _outline(tree: ast.Module) -> list[str]:
+	rows: list[str] = []
+
+	def walk(node: ast.AST, depth: int) -> None:
+		for child in getattr(node, "body", []):
+			kind = _KIND.get(type(child))
+			if kind is None:
+				continue
+			sig = ""
+			if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+				a = child.args
+				names = [p.arg for p in (*a.posonlyargs, *a.args, *a.kwonlyargs)]
+				sig = "(" + ", ".join(names) + ")"
+			rows.append(f"{'    ' * depth}{kind} {child.name}{sig}  :{child.lineno}")
+			walk(child, depth + 1)
+
+	walk(tree, 0)
+	return rows
+
+
+def main() -> int:
+	if len(sys.argv) != 2:
+		sys.exit("usage: outline <python-file>")
+	path = Path(sys.argv[1])
+	src = path.read_text()
+	rows = _outline(ast.parse(src))
+	block = f"{START}\n" + "\n".join(f"# {row}" for row in rows) + f"\n{END}\n"
+	base = src[: src.index(START)] if START in src else src
+	path.write_text(base.rstrip("\n") + "\n\n" + block)
+	print(f"outline: {len(rows)} symbols -> {path}")
+	return 0
+
+
+if __name__ == "__main__":
+	raise SystemExit(main())

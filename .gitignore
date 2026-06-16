@@ -1,5 +1,9 @@
 src/
+pkg/
 __pycache__/
 **-git/
-**.tar.zst
+*.pkg.tar.*
+*.src.tar.*
+*.log
 **.bak
+**.tmp**

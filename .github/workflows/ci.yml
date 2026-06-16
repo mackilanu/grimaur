@@ -2,11 +2,32 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    paths-ignore:
+      - '**.md'
+  pull_request:
     paths-ignore:
       - '**.md'
 
 jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Install lint/type tools
+        run: pip install ruff mypy
+      - name: Ruff lint
+        run: ruff check grimoire tests/
+      - name: Ruff format
+        run: ruff format --check grimoire tests/
+      - name: Type check
+        run: mypy grimoire tests/
+      # discover via unittest so CI needs no pytest dependency
+      - name: Unit tests
+        run: python -m unittest discover -s tests -t tests -v
+
   smoke:
     runs-on: ubuntu-latest
     container:
@@ -39,35 +60,76 @@ jobs:
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
           chown -R builder:builder .
 # setup done; all steps below run as builder via defaults.run.shell
-      - run: ./grimaur --help
-      - run: ./grimaur fetch $PKG
-      - run: ./grimaur --refresh fetch $PKG
-      - run: ./grimaur fetch --force $PKG
+      - run: ./grimoire --help
 
-      - name: Shallow clone is depth=1
+      # --- Custom repo (VUR): build grimoire-git from a custom source, before the AUR ---
+      - name: Build grimoire-git from a custom repo (VUR)
         run: |
-          rm -rf ~/.cache/aurgit
-          ./grimaur --shallow fetch $PKG
-          count=$(git -C ~/.cache/aurgit/$PKG rev-list --count HEAD)
-          [ "$count" = "1" ]; echo "got $count, test pass." || { echo "expected 1, got $count"; exit 1; }
+          # scheme-less, subdir-per-pkg container alias; `repo --add` seeds the default
+          # base ([ARCH] + AUR toggle) first, then appends [VUR]
+          ./grimoire repo --add 'github.com/h8d13/VUR/tree/master/pkgs' VUR
+          ./grimoire repo --ls
+          ./grimoire install grimoire-git --repo VUR --noconfirm
+          # verify it was built from the custom source (origin is VUR, not the AUR)
+          git -C ~/.cache/grimoire/grimoire-git remote get-url origin | grep -q 'h8d13/VUR'
+          pacman -Q grimoire-git
+          echo "grimoire-git built from VUR: PASS"
 
-      - run: ./grimaur --git-mirror fetch --force $PKG
-      - run: ./grimaur fetch --force $PKG --git-mirror
-      - run: ./grimaur --git-mirror update --noconfirm
-      - run: ./grimaur inspect $PKG --target PKGBUILD
+      - name: Custom-repo reads (default source, search, {pkgbase})
+        run: |
+          # bare commands start at [ARCH] and fallthrough to next src [VUR]
+          ./grimoire fetch grimoire-git | grep -q 'pkgs/grimoire-git'
+          # check empty search
+          ./grimoire search '' --repo VUR --no-interactive --plain | grep -q 'vscodium-rel'
+          ./grimoire search bash --repo ARCH --no-interactive --plain | grep -qE '(core|extra)/bash'
+          # bare search aggregates ALL conf sections -> VUR shows without --repo
+          ./grimoire search vscodium-rel --no-interactive --plain | grep -q 'VUR/vscodium-rel'
+          # split package resolves name -> pkgbase via the sync DB
+          ./grimoire inspect amd-ucode --repo ARCH --target PKGBUILD | grep -q '^pkgbase=linux-firmware'
+          ./grimoire update grimoire-git --repo VUR --noconfirm 2>&1 | tee /tmp/upd.log
+          grep -q 'up to date' /tmp/upd.log
 
-      - name: Search unbounded (timed)
-        run: time ./grimaur search $PATTERN --no-interactive
+      - name: Build from [ARCH] official repo
+        run: |
+          ./grimoire install fastfetch --noconfirm && fastfetch
 
       - name: Test --use-ssh rewrites URLs (clone fails, but rewrite worked)
         env:
           DEBUG: "1"
         run: |
-          ./grimaur fetch archinstoo --use-ssh --shallow --repo-url https://github.com/h8d13/archinstoo 2>&1 | tee /tmp/ssh.log || true
+          ./grimoire fetch archinstoo --use-ssh --shallow --repo-url https://github.com/h8d13/archinstoo 2>&1 | tee /tmp/ssh.log || true
           grep -qF 'ssh://git@github.com/h8d13/archinstoo' /tmp/ssh.log; echo "URL re-written PASS." \
             || { echo "FAIL: --use-ssh did not rewrite URL to ssh://"; exit 1; }
 
-      - name: Install via grimaur (as builder)
-        run: ./grimaur install $PKG --noconfirm
+      # --- AUR backend: opt in ([AUR] toggle = true, only/first section) and exercise it ---
+      - name: Enable the AUR and run AUR-backed tests (yay)
+        run: |
+          mkdir -p ~/.config/grimoire
+          printf '[AUR]\n  true\n' > ~/.config/grimoire/repos.ini
+          ./grimoire fetch $PKG
+          ./grimoire --refresh fetch $PKG
+          rm -rf ~/.cache/grimoire/$PKG
+          ./grimoire --shallow fetch $PKG
+          count=$(git -C ~/.cache/grimoire/$PKG rev-list --count HEAD)
+          [ "$count" = "1" ] && echo "shallow depth=1 PASS" || { echo "expected 1, got $count"; exit 1; }
+          # a leftover non-git dir in the cache is recreated automatically (no flag)
+          rm -rf ~/.cache/grimoire/$PKG && mkdir -p ~/.cache/grimoire/$PKG && touch ~/.cache/grimoire/$PKG/junk
+          ./grimoire fetch $PKG
+          test -d ~/.cache/grimoire/$PKG/.git && echo "auto-recover non-git dir PASS"
+          ./grimoire inspect $PKG --target PKGBUILD
+          time ./grimoire search $PATTERN --no-interactive
+          ./grimoire install $PKG --noconfirm       # bare -> default [AUR]
+          pacman -Q $PKG
+          echo "$PKG built from AUR: PASS"
 
-      - run: ./grimaur list
+      # --- First run with no conf auto-seeds an [ARCH] default (AUR opt-in) ---
+      - name: First run seeds an [ARCH] default conf
+        run: |
+          rm -f ~/.config/grimoire/repos.ini
+          ./grimoire inspect bash --target PKGBUILD | grep -q '^pkgname=bash'   # bare -> auto [ARCH]
+          test -f ~/.config/grimoire/repos.ini
+          grep -q '^\[ARCH\]' ~/.config/grimoire/repos.ini
+          grep -q '^\[AUR\]' ~/.config/grimoire/repos.ini                # reserved AUR toggle is seeded...
+          ./grimoire list --repo AUR 2>&1 | grep -qi 'disabled'           # ...and off by default (opt-in)
+
+      - run: ./grimoire list

@@ -1,0 +1,46 @@
+name: release
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '**.md'
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version info
+        run: |
+          VER=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
+          TAG=$(git rev-parse --short HEAD)
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Create release archive
+        run: |
+          tar -czf ${{ env.VER }}.tar.gz \
+            grimoire PKGBUILD LICENSE README.md
+
+      - name: Delete existing latest tag
+        run: |
+          git push origin :refs/tags/latest || true
+          gh release delete latest --yes || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: ${{ env.TAG }}
+          make_latest: true
+          files: ${{ env.VER }}.tar.gz
