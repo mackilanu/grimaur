@@ -141,6 +141,18 @@ class UpdateCandidate:
 	target_version: 	str | None
 	remote_head: 		str | None
 	local_head: 		str | None
+	# Clone HEAD before the update probe advances it -- the installed version's commit,
+	# diffed against the new one in the build review. None when there was no prior clone.
+	prev_head: 		str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UpdateContext:
+	# What an update rebuild hands install_package beyond a fresh install: the version
+	# label for the "Updating X (a -> b)" line, and the pre-update commit the PKGBUILD
+	# review diffs against. Absent (None) on a plain install.
+	target: 	str
+	prev_head: 	str | None = None
 
 
 class RepoRef(NamedTuple):
@@ -2125,6 +2137,49 @@ def _confirm_aur_dependencies(
 		raise GrimoireErr("Installation aborted by user")
 
 
+def _page_file(path: Path) -> None:
+	# Show a file through $PAGER (default `less`), streams inheriting the tty so it stays
+	# scrollable -- unlike run_command's captured output. Falls back to a plain dump when
+	# no pager is on PATH or it can't launch.
+	argv = shlex.split(os.environ.get("PAGER") or "less")
+	if argv and shutil.which(argv[0]):
+		with contextlib.suppress(OSError):
+			subprocess.run([*argv, str(path)], check=False)  # noqa: S603 - pager from env, path internal
+			return
+	print(path.read_text())
+
+
+def _review_pkgbuild(
+	package_dir: Path, package: str, diff_base: str | None = None
+) -> None:
+	# Safety gate before makepkg runs the PKGBUILD's code. On an update we have the
+	# previously-built commit (diff_base), so show just what changed since the installed
+	# version (git diff, like paru/yay); on a fresh install show the whole PKGBUILD.
+	# Declining builds as before; reviewing still lets the user abort. No-op off a tty,
+	# where prompt_confirm returns False.
+	pkgbuild = package_dir / "PKGBUILD"
+	if not pkgbuild.is_file():
+		return
+	head = _local_head(package_dir)
+	show_diff = diff_base is not None and head is not None and diff_base != head
+	noun = "changes to" if show_diff else "PKGBUILD for"
+	if not prompt_confirm(
+		style(f"Review {noun} {package} before building? [y/N]: ", YELLOW)
+	):
+		return
+	if show_diff:
+		# capture=False inherits the tty, so git pages the diff itself (GIT_PAGER/
+		# core.pager/$PAGER, default less); check=False ignores a pager-quit exit code.
+		run_command(
+			["git", "-C", str(package_dir), "diff", f"{diff_base}..{head}"],
+			check=False,
+		)
+	else:
+		_page_file(pkgbuild)
+	if not prompt_confirm(style(f"Proceed with building {package}? [y/N]: ", YELLOW)):
+		raise GrimoireErr("Installation aborted by user")
+
+
 def install_package(
 	package: 		str,
 	dest_root: 		Path,
@@ -2135,7 +2190,7 @@ def install_package(
 	preinstalled_official: 	set[str] | None = None,
 	source: 		CloneSource | None = None,
 	sources: 		Sequence[CloneSource] | None = None,
-	update_to: 		str | None = None,
+	update: 		UpdateContext | None = None,
 	verify: 		bool = False,
 	min_trust: 		TrustLevel | None = None,
 	submodules: 		bool = False,
@@ -2148,8 +2203,8 @@ def install_package(
 
 	if is_installed(package):
 		installed_ver = get_installed_version(package)
-		if update_to:
-			print(f"Updating {style(package, BOLD)} ({installed_ver} -> {update_to})")
+		if update:
+			print(f"Updating {style(package, BOLD)} ({installed_ver} -> {update.target})")
 		else:
 			print(
 				f"Package {style(package, BOLD)} is already installed ({installed_ver})"
@@ -2210,6 +2265,13 @@ def install_package(
 			verify=verify,
 			min_trust=min_trust,
 			submodules=submodules,
+		)
+
+	# Review gate for AUR PKGBUILDs (an origin-less / aur.archlinux.org clone). A custom
+	# repo registered by the user is treated as trusted and skips straight to the build.
+	if not noconfirm and _origin_label(package_dir) == "aur":
+		_review_pkgbuild(
+			package_dir, package, update.prev_head if update else None
 		)
 
 	build_and_install(package_dir, noconfirm=noconfirm, refresh=refresh)
@@ -2458,6 +2520,9 @@ def _plan_updates(
 			continue
 		if skip_devel and is_vcs_package(package):
 			continue
+		# Read the clone's HEAD before the probe fetches/resets it, so the build review
+		# can diff the installed version against the update.
+		prev_head = _local_head(dest_root / package)
 		try:
 			source, (remote_version, remote_head, local_head) = _find_update_source(
 				package,
@@ -2485,6 +2550,7 @@ def _plan_updates(
 				target_version=remote_version,
 				remote_head=remote_head,
 				local_head=local_head,
+				prev_head=prev_head,
 			)
 		)
 	return pending, winning, missing
@@ -2513,7 +2579,9 @@ def _rebuild_updates(
 				visited=shared_visited,
 				preinstalled_official=shared_preinstalled_official,
 				source=source,
-				update_to=_update_target_label(candidate),
+				update=UpdateContext(
+					_update_target_label(candidate), candidate.prev_head
+				),
 			)
 		except GrimoireErr as exc:
 			print(f"error updating {candidate.name}: {exc}", file=sys.stderr)
@@ -3861,170 +3929,173 @@ if __name__ == "__main__":
 #     def all_build_deps(self)  :116
 # class SearchResult  :121
 # class UpdateCandidate  :138
-# class RepoRef  :146
-# class UpdateProbe  :154
-# class UpdateSpec  :162
-# class CloneSource  :169
-# class GrimoireErr  :179
-# def style(text)  :246
-# def prompt_confirm(message)  :252
-# def is_debug_package(name)  :262
-# def is_vcs_package(name)  :266
-# def get_aur_remote()  :271
-# def _aur_mirror_lsremote_cmd()  :276
-# def _lsremote_first_sha(output)  :280
-# def _lsremote_names(output)  :288
-# def _xdg_config_home()  :299
-# def _makepkg_conf_paths()  :303
-# def _pacman_db_path()  :311
-# def _iter_db_descs(db, name_prefix)  :323
-# def _iter_sync_db_desc(name_prefix)  :346
-# def _local_db_descs(name_prefix)  :363
-# def _local_db_pkgbase(package)  :383
-# def _db_pkgbase(package)  :398
-# def _aur_rpc_pkgbase(package)  :408
-# def _resolve_pkgbase(package)  :431
-# def _aur_pkgbase(package)  :438
-# def _sync_db_packages()  :446
-# def _sync_db_signature()  :460
-# def _sync_db_packages_cached()  :478
-# def _read_pacman_auth()  :489
-# def _get_elev()  :503
-# def _elevate(cmd)  :513
-# def _maybe_ssh_rewrite(url)  :522
-# def _remote_for(url)  :537
-# def _ssh_rewrite_git_env()  :543
-# def _ensure_scheme(url)  :559
-# def _split_forge_path(parts, markers, ref_offset, gate)  :574
-# def parse_repo_url(url)  :597
-#     def _rebuild(repo_parts, ref, sub)  :607
-# def _forge_raw_url(clone_url, ref, path)  :641
-# def _repo_registry_path()  :666
-# def _ensure_repos_conf()  :670
-# def load_repo_registry()  :682
-# def _repos_section_end(lines, header_idx)  :704
-# def add_repo_alias(name, url)  :716
-# def remove_repo_alias(name)  :746
-# def resolve_repo_alias(name)  :762
-# def _aur_enabled()  :771
-# def _resolve_repo_for_package(package, alias, repo_url, branch, subdir)  :782
-#     def _sub(value)  :805
-#     def _resolve(raw)  :820
-# def _resolve_sources(args, package)  :832
-# def _cache_get(key, ttl)  :867
-# def _atomic_write(path, payload)  :880
-# def _cache_put(key, payload)  :889
-# def _completion_cache_path()  :895
-# def cached_json(key, ttl, fetch)  :903
-# def clear_search_cache()  :924
-# def clean_clones(dest_root)  :939
-# def _remove_clone(package, dest_root)  :955
-# def run_command(cmd, cwd, capture, check, env)  :968
-# def run_command(cmd, cwd, capture, check, env)  :979
-# def run_command(cmd, cwd, capture, check, env)  :989
-# def _resolve_build_dir(clone_root, subdir)  :1021
-# def _resolve_package_dir(clone_root, subdir, package)  :1033
-# def _tree_has(package_dir, ref, path)  :1047
-# def _build_subpath(package_dir, ref, subdir, package)  :1061
-# def _subdir_hint(package_dir, ref, package)  :1072
-# def _http_status(url)  :1091
-# def _remote_pkgbuild_present(url, ref, subdir, package)  :1106
-# def _clone_with_fallback(package_dir, candidates, package)  :1132
-# def _normalize_git_url(url)  :1199
-# def _clone_origin(package_dir)  :1215
-# def _is_aur_origin(origin)  :1226
-# def _origin_label(package_dir)  :1232
-# def _init_submodules(clone_root)  :1241
-# def ensure_clone(package, dest_root, source, refresh, submodules)  :1254
-# def _clone_resolved(package, dest_root, refresh, submodules, source, sources)  :1360
-# def _reuse_existing_clone(package, dest_root, sources, submodules)  :1380
-# def _clone_any_source(package, dest_root, sources, refresh, submodules)  :1410
-# def read_srcinfo(package_dir)  :1462
-# def _iter_srcinfo_kv(srcinfo_content)  :1471
-# def _str_or_none(value)  :1482
-# def _assemble_version(pkgver, pkgrel, epoch)  :1486
-# def parse_dependencies(srcinfo_content)  :1503
-# def _normalize_dep(dep_entry)  :1535
-# def _pkgbase_guesses(dep)  :1544
-# def parse_srcinfo_metadata(srcinfo_content)  :1555
-# def _reset_git_worktree(package_dir, refs)  :1569
-# def _ref_is_annotated_tag(package_dir, ref)  :1601
-# def _classify_verify_failure(output, min_trust)  :1613
-# def _verify_signature(package_dir, package, ref, min_trust)  :1633
-# def _pacman_returns_zero(args)  :1674
-# def invalidate_inst_cache()  :1690
-# def _list_local_db_packages()  :1694
-# def installed_package_set()  :1700
-# def is_installed(package)  :1713
-# def exists_in_sync_repo(package)  :1718
-# def is_dependency_satisfied(dep)  :1722
-# def package_provides(package)  :1727
-# def _search_aur_candidates(dep, limit)  :1740
-# def resolve_aur_dependency(dep)  :1767
-#     def add_candidate(name)  :1773
-# def resolve_official_dependency(dep)  :1809
-# def exists_in_aur_mirror(package)  :1831
-# def list_foreign_packages()  :1844
-# def _local_head(package_dir)  :1862
-# def _git_remote_head(url, ref)  :1874
-# def _aur_remote_head(package)  :1884
-# def get_installed_version(package)  :1895
-# def list_installed_packages()  :1907
-# def list_repo_packages(name, dest_root)  :1921
-# def fetch_git_file(package, path)  :1967
-# def git_srcinfo_metadata(package)  :1991
-# def install_official_packages(packages, noconfirm)  :2001
-# def collect_missing_official_packages(package, dest_root, refresh, visited)  :2014
-# def build_and_install(package_dir, noconfirm, refresh)  :2060
-# def _classify_build_deps(deps, package)  :2080
-# def _confirm_aur_dependencies(aur_dependencies, virtual_providers)  :2110
-# def install_package(package, dest_root, refresh, noconfirm, visited, preinstalled_official, source, sources, update_to, verify, min_trust, submodules, local_dir)  :2128
-# def _find_pkgbuild_dir(clone_root, package)  :2218
-# def build_package(package, dest_root, noconfirm)  :2235
-# def remove_package(package, noconfirm)  :2253
-# def get_ignored_packages()  :2271
-# def _resolve_update_spec(package, alias, url, branch, subdir)  :2295
-# def _probe_aur_update(package, dest_root)  :2311
-# def _probe_git_update(package, dest_root, source, refresh)  :2325
-# def _find_update_source(package, update_specs, dest_root, refresh, branch, subdir)  :2352
-# def _run_system_update(noconfirm)  :2374
-# def _collect_update_candidates(targets)  :2395
-# def _update_target_label(candidate)  :2415
-# def _update_source_label(repo, repo_url, update_specs)  :2424
-# def _plan_updates(candidates, update_specs, dest_root, ignored, skip_devel, refresh, branch, subdir)  :2437
-# def _rebuild_updates(selected, winning_source, dest_root, refresh, noconfirm)  :2493
-# def _print_missing_notes(missing, source_label)  :2522
-# def update_packages(dest_root, refresh, noconfirm, update_system, include_devel, targets, repo, repo_url, branch, subdir)  :2529
-# def search_packages(regex, needle, limit)  :2605
-# def _fetch_aur_meta()  :2614
-# def _fetch_names_git()  :2640
-# def _fetch_aur_packages()  :2645
-# def _fetch_aur_packages_with_completion()  :2660
-# def aur_packages()  :2672
-# def is_regex(pattern)  :2682
-# def compute_match_score(name, regex, needle)  :2687
-# def search_packages_git(regex, needle, limit)  :2712
-# def _repo_package_names(repo_url, branch, subdir, clone_dir)  :2744
-# def _enumerate_repo(repo_url, branch, subdir, dest_root)  :2778
-# def search_packages_repo(repo_url, branch, subdir, regex, needle, limit, source, dest_root, alias)  :2803
-# def order_search_results(results)  :2873
-# def format_search_result(index, result)  :2878
-# def format_search_result_plain(result)  :2905
-# def print_search_results(results)  :2917
-# def interactive_select_updates(candidates)  :2925
-# def parse_selection(selection, max_index)  :2961
-# def interactive_select_results(results)  :2997
-# def _join_values(values, sort)  :3023
-# def _srcinfo_values(srcinfo_content, key)  :3028
-# def srcinfo_info_fields(package, srcinfo_content, repo)  :3032
-#     def first(key)  :3039
-#     def join(values)  :3043
-# def print_info_fields(fields)  :3063
-# def _print_info_summary(package, description, deps)  :3069
-# def inspect_package(package, dest_root, refresh, target, source, sources, plain)  :3091
-# def fetch_package(package, dest_root, refresh, source, sources, verify, min_trust, submodules)  :3124
-# def _search_all_sources(alias, repo_url, regex, needle, limit, branch, subdir, dest_root)  :3150
-# def _install_search_picks(selected, dest_root, explicit_url, branch, subdir, refresh, noconfirm)  :3203
-# def build_parser()  :3251
-# def main(argv)  :3544
+# class UpdateContext  :150
+# class RepoRef  :158
+# class UpdateProbe  :166
+# class UpdateSpec  :174
+# class CloneSource  :181
+# class GrimoireErr  :191
+# def style(text)  :258
+# def prompt_confirm(message)  :264
+# def is_debug_package(name)  :274
+# def is_vcs_package(name)  :278
+# def get_aur_remote()  :283
+# def _aur_mirror_lsremote_cmd()  :288
+# def _lsremote_first_sha(output)  :292
+# def _lsremote_names(output)  :300
+# def _xdg_config_home()  :311
+# def _makepkg_conf_paths()  :315
+# def _pacman_db_path()  :323
+# def _iter_db_descs(db, name_prefix)  :335
+# def _iter_sync_db_desc(name_prefix)  :358
+# def _local_db_descs(name_prefix)  :375
+# def _local_db_pkgbase(package)  :395
+# def _db_pkgbase(package)  :410
+# def _aur_rpc_pkgbase(package)  :420
+# def _resolve_pkgbase(package)  :443
+# def _aur_pkgbase(package)  :450
+# def _sync_db_packages()  :458
+# def _sync_db_signature()  :472
+# def _sync_db_packages_cached()  :490
+# def _read_pacman_auth()  :501
+# def _get_elev()  :515
+# def _elevate(cmd)  :525
+# def _maybe_ssh_rewrite(url)  :534
+# def _remote_for(url)  :549
+# def _ssh_rewrite_git_env()  :555
+# def _ensure_scheme(url)  :571
+# def _split_forge_path(parts, markers, ref_offset, gate)  :586
+# def parse_repo_url(url)  :609
+#     def _rebuild(repo_parts, ref, sub)  :619
+# def _forge_raw_url(clone_url, ref, path)  :653
+# def _repo_registry_path()  :678
+# def _ensure_repos_conf()  :682
+# def load_repo_registry()  :694
+# def _repos_section_end(lines, header_idx)  :716
+# def add_repo_alias(name, url)  :728
+# def remove_repo_alias(name)  :758
+# def resolve_repo_alias(name)  :774
+# def _aur_enabled()  :783
+# def _resolve_repo_for_package(package, alias, repo_url, branch, subdir)  :794
+#     def _sub(value)  :817
+#     def _resolve(raw)  :832
+# def _resolve_sources(args, package)  :844
+# def _cache_get(key, ttl)  :879
+# def _atomic_write(path, payload)  :892
+# def _cache_put(key, payload)  :901
+# def _completion_cache_path()  :907
+# def cached_json(key, ttl, fetch)  :915
+# def clear_search_cache()  :936
+# def clean_clones(dest_root)  :951
+# def _remove_clone(package, dest_root)  :967
+# def run_command(cmd, cwd, capture, check, env)  :980
+# def run_command(cmd, cwd, capture, check, env)  :991
+# def run_command(cmd, cwd, capture, check, env)  :1001
+# def _resolve_build_dir(clone_root, subdir)  :1033
+# def _resolve_package_dir(clone_root, subdir, package)  :1045
+# def _tree_has(package_dir, ref, path)  :1059
+# def _build_subpath(package_dir, ref, subdir, package)  :1073
+# def _subdir_hint(package_dir, ref, package)  :1084
+# def _http_status(url)  :1103
+# def _remote_pkgbuild_present(url, ref, subdir, package)  :1118
+# def _clone_with_fallback(package_dir, candidates, package)  :1144
+# def _normalize_git_url(url)  :1211
+# def _clone_origin(package_dir)  :1227
+# def _is_aur_origin(origin)  :1238
+# def _origin_label(package_dir)  :1244
+# def _init_submodules(clone_root)  :1253
+# def ensure_clone(package, dest_root, source, refresh, submodules)  :1266
+# def _clone_resolved(package, dest_root, refresh, submodules, source, sources)  :1372
+# def _reuse_existing_clone(package, dest_root, sources, submodules)  :1392
+# def _clone_any_source(package, dest_root, sources, refresh, submodules)  :1422
+# def read_srcinfo(package_dir)  :1474
+# def _iter_srcinfo_kv(srcinfo_content)  :1483
+# def _str_or_none(value)  :1494
+# def _assemble_version(pkgver, pkgrel, epoch)  :1498
+# def parse_dependencies(srcinfo_content)  :1515
+# def _normalize_dep(dep_entry)  :1547
+# def _pkgbase_guesses(dep)  :1556
+# def parse_srcinfo_metadata(srcinfo_content)  :1567
+# def _reset_git_worktree(package_dir, refs)  :1581
+# def _ref_is_annotated_tag(package_dir, ref)  :1613
+# def _classify_verify_failure(output, min_trust)  :1625
+# def _verify_signature(package_dir, package, ref, min_trust)  :1645
+# def _pacman_returns_zero(args)  :1686
+# def invalidate_inst_cache()  :1702
+# def _list_local_db_packages()  :1706
+# def installed_package_set()  :1712
+# def is_installed(package)  :1725
+# def exists_in_sync_repo(package)  :1730
+# def is_dependency_satisfied(dep)  :1734
+# def package_provides(package)  :1739
+# def _search_aur_candidates(dep, limit)  :1752
+# def resolve_aur_dependency(dep)  :1779
+#     def add_candidate(name)  :1785
+# def resolve_official_dependency(dep)  :1821
+# def exists_in_aur_mirror(package)  :1843
+# def list_foreign_packages()  :1856
+# def _local_head(package_dir)  :1874
+# def _git_remote_head(url, ref)  :1886
+# def _aur_remote_head(package)  :1896
+# def get_installed_version(package)  :1907
+# def list_installed_packages()  :1919
+# def list_repo_packages(name, dest_root)  :1933
+# def fetch_git_file(package, path)  :1979
+# def git_srcinfo_metadata(package)  :2003
+# def install_official_packages(packages, noconfirm)  :2013
+# def collect_missing_official_packages(package, dest_root, refresh, visited)  :2026
+# def build_and_install(package_dir, noconfirm, refresh)  :2072
+# def _classify_build_deps(deps, package)  :2092
+# def _confirm_aur_dependencies(aur_dependencies, virtual_providers)  :2122
+# def _page_file(path)  :2140
+# def _review_pkgbuild(package_dir, package, diff_base)  :2152
+# def install_package(package, dest_root, refresh, noconfirm, visited, preinstalled_official, source, sources, update, verify, min_trust, submodules, local_dir)  :2183
+# def _find_pkgbuild_dir(clone_root, package)  :2280
+# def build_package(package, dest_root, noconfirm)  :2297
+# def remove_package(package, noconfirm)  :2315
+# def get_ignored_packages()  :2333
+# def _resolve_update_spec(package, alias, url, branch, subdir)  :2357
+# def _probe_aur_update(package, dest_root)  :2373
+# def _probe_git_update(package, dest_root, source, refresh)  :2387
+# def _find_update_source(package, update_specs, dest_root, refresh, branch, subdir)  :2414
+# def _run_system_update(noconfirm)  :2436
+# def _collect_update_candidates(targets)  :2457
+# def _update_target_label(candidate)  :2477
+# def _update_source_label(repo, repo_url, update_specs)  :2486
+# def _plan_updates(candidates, update_specs, dest_root, ignored, skip_devel, refresh, branch, subdir)  :2499
+# def _rebuild_updates(selected, winning_source, dest_root, refresh, noconfirm)  :2559
+# def _print_missing_notes(missing, source_label)  :2590
+# def update_packages(dest_root, refresh, noconfirm, update_system, include_devel, targets, repo, repo_url, branch, subdir)  :2597
+# def search_packages(regex, needle, limit)  :2673
+# def _fetch_aur_meta()  :2682
+# def _fetch_names_git()  :2708
+# def _fetch_aur_packages()  :2713
+# def _fetch_aur_packages_with_completion()  :2728
+# def aur_packages()  :2740
+# def is_regex(pattern)  :2750
+# def compute_match_score(name, regex, needle)  :2755
+# def search_packages_git(regex, needle, limit)  :2780
+# def _repo_package_names(repo_url, branch, subdir, clone_dir)  :2812
+# def _enumerate_repo(repo_url, branch, subdir, dest_root)  :2846
+# def search_packages_repo(repo_url, branch, subdir, regex, needle, limit, source, dest_root, alias)  :2871
+# def order_search_results(results)  :2941
+# def format_search_result(index, result)  :2946
+# def format_search_result_plain(result)  :2973
+# def print_search_results(results)  :2985
+# def interactive_select_updates(candidates)  :2993
+# def parse_selection(selection, max_index)  :3029
+# def interactive_select_results(results)  :3065
+# def _join_values(values, sort)  :3091
+# def _srcinfo_values(srcinfo_content, key)  :3096
+# def srcinfo_info_fields(package, srcinfo_content, repo)  :3100
+#     def first(key)  :3107
+#     def join(values)  :3111
+# def print_info_fields(fields)  :3131
+# def _print_info_summary(package, description, deps)  :3137
+# def inspect_package(package, dest_root, refresh, target, source, sources, plain)  :3159
+# def fetch_package(package, dest_root, refresh, source, sources, verify, min_trust, submodules)  :3192
+# def _search_all_sources(alias, repo_url, regex, needle, limit, branch, subdir, dest_root)  :3218
+# def _install_search_picks(selected, dest_root, explicit_url, branch, subdir, refresh, noconfirm)  :3271
+# def build_parser()  :3319
+# def main(argv)  :3612
 #############

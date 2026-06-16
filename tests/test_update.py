@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 from grimoireshim import grimoire
@@ -62,10 +63,12 @@ class UpdateOutputTests(unittest.TestCase):
 
 	def _run_update(
 		self, package: str, installed: str
-	) -> tuple[str, list[dict[str, object]]]:
-		calls: list[dict[str, object]] = []
+	) -> tuple[str, list[dict[str, Any]]]:
+		# kw values are Any so a captured UpdateContext's .target reads without a type
+		# position on `grimoire` (the shim types it as ModuleType, not its classes).
+		calls: list[dict[str, Any]] = []
 
-		def _fake_install(pkg: str, dest: Path, **kw: object) -> None:
+		def _fake_install(pkg: str, dest: Path, **kw: Any) -> None:
 			calls.append({"pkg": pkg, **kw})
 
 		buf = io.StringIO()
@@ -93,7 +96,7 @@ class UpdateOutputTests(unittest.TestCase):
 		self.assertIn("foo 1-1 -> 2-1", out)
 		self.assertEqual(len(calls), 1)
 		self.assertEqual(calls[0]["pkg"], "foo")
-		self.assertEqual(calls[0]["update_to"], "2-1")
+		self.assertEqual(calls[0]["update"].target, "2-1")
 
 	def test_pkgrel_only_bump_detected(self) -> None:
 		# Same pkgver, repo has -1 vs installed -2: still an update (string mismatch).
@@ -111,7 +114,7 @@ class UpdateOutputTests(unittest.TestCase):
 		self.assertIn(f"foo-git 1-1 -> {short}", out)
 		self.assertEqual(len(calls), 1)
 		self.assertEqual(calls[0]["pkg"], "foo-git")
-		self.assertEqual(calls[0]["update_to"], short)
+		self.assertEqual(calls[0]["update"].target, short)
 
 
 if __name__ == "__main__":
