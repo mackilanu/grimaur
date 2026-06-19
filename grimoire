@@ -2957,7 +2957,7 @@ def format_search_result(index: int, result: SearchResult) -> list[str]:
 	elif result.source is not None:
 		meta_bits = [f"{protocol} {result.source}"]
 	else:
-		meta_bits = [f"{protocol} git mirror"]
+		meta_bits = [f"{protocol} AUR"]
 	line = f"{index_label} {' '.join(main_parts)}"
 	if meta_bits:
 		line += f" {style('[' + ', '.join(meta_bits) + ']', DIM)}"
