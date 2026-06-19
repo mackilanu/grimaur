@@ -37,24 +37,24 @@ Also accepts: `SRCINFO` and `info`
 
 ### Inspect & Install & Remove Packages
 
-`inspect`, `fetch`, `build`, `install`and `remove` accept one or more packages (`grimoire install a b c`).
+`inspect`, `install`, `fetch`, and `remove` accept one or more packages (`grimoire install a b c`).
 
 - `grimoire inspect <package>` shows description + all deps (make/check/optional)
-- `grimoire build <package>` build with with `makepkg`
 - `grimoire install <package>` clones the repo, resolves dependencies, builds
-   - Pass `--noconfirm` to skip prompts
+   - Pass `--noconfirm` to skip prompts (install, update, remove, and search)
    - Pass `--use-ssh` use SSH instead of HTTPS
    - Pass `--submod` (install/fetch) to init the repo's git submodules after checkout.
 - `grimoire remove <package>` to uninstall from pacman
 - `grimoire clean` drops the search result cache (and completion cache)
-   - `grimoire clean <package>` removes just clone
+   - `grimoire clean <package>` removes just that package's clone (leaves the install)
    - Pass `--clones` to remove every cloned package build tree
 
 ### Build from other sources
 
 With no `--repo`, sources are tried in `repos.ini` order (top first); the first that has
-the package wins, the rest are fallbacks.
-Point at anything else that ships a `PKGBUILD` with `--repo-url`/`--repo`
+the package wins, the rest are fallbacks. `repos.ini` is auto-seeded to `[ARCH]` official Gitlab.
+Point at anything else that ships a `PKGBUILD` with `--repo-url`/`--repo` on
+`install`, `fetch`, `inspect`, `search`, and `update`:
    - `--repo-url <url>` builds from a git URL (scheme optional: `provider.ext/u/r` works).
    - `--rev <branch|tag|commit>` / `--subdir <dir>` pick a revision, or a package nested in a monorepo
    - `repo --add <url> <name>` saves an alias; use it with `--repo <name>`.
@@ -73,7 +73,7 @@ See [`repos.ini`](./repos.ini) for examples.
 Section order is precedence: `install`/`fetch`/`inspect`/`update` walk sections top to
 bottom and build from the first that has the package.
 
-You can generate it with `grimoire -v`, **auto-creates** `~/.config/grimoire/repos.ini` with `[ARCH]` as the default.
+On first use, **auto-creates** `~/.config/grimoire/repos.ini` with `[ARCH]` as the default.
 
 ### Stay Updated
 
