@@ -40,6 +40,7 @@ Also accepts: `SRCINFO` and `info`
 `inspect`, `fetch`, `build`, `install`and `remove` accept one or more packages (`grimoire install a b c`).
 
 - `grimoire inspect <package>` shows description + all deps (make/check/optional)
+- `grimoire fetch <package>` clones it to your `--dest-root`
 - `grimoire build <package>` build with `makepkg`
 - `grimoire install <package>` clones the repo, resolves dependencies, builds
    - Pass `--noconfirm` to skip prompts
