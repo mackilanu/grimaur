@@ -13,6 +13,17 @@ because it drives `git` & `makepkg`, it can build [`PKGBUILD`](https://wiki.arch
 ### Deps
 `sudo pacman -S --needed git base-devel`
 
+#### Without sudo
+
+`base-devel` is a metapackage; on boxes where you don't want `sudo` pulled in,
+install its members directly (grimoire falls back to `doas`/`run0`/`su`):
+
+```bash
+pacman -S --needed git archlinux-keyring autoconf automake binutils bison debugedit \
+   fakeroot file findutils flex gawk gcc gettext grep groff gzip libtool m4 make \
+   pacman patch pkgconf sed texinfo which
+```
+
 ### From Github/Python directly
    ```bash
    git clone https://github.com/mackilanu/grimaur

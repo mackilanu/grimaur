@@ -31,7 +31,11 @@ ASCII: Donovan Baker
 
 ##  SPDX-License-Identifier: MIT */
 
-Requirements: git, base-devel, pacman, and sudo/doas/run0/su.
+Requirements:
+
+pacman -S --needed git archlinux-keyring autoconf automake binutils bison debugedit \
+   fakeroot file findutils flex gawk gcc gettext grep groff gzip libtool m4 make \
+   pacman patch pkgconf sed texinfo which
 """
 
 import argparse
@@ -309,6 +313,9 @@ def _get_elev() -> str:
 	if preferred and shutil.which(preferred):
 		return preferred
 	for tool in _ELEV_TOOLS:
+		if tool == "run0" and shutil.which("pkcheck") is None:
+			continue  # run0 auths via polkit, optdep of systemd
+			# fall-back to su in this case continue walking
 		if shutil.which(tool):
 			return tool
 	raise GrimoireErr("No privilege elevation tool found.")
@@ -317,6 +324,10 @@ def _get_elev() -> str:
 def _elevate(cmd: list[str]) -> list[str]:
 	if os.geteuid() == 0:
 		return cmd
+	# doas matches `cmd` rules against argv[0] as typed; makepkg already
+	# passes its PACMAN_AUTH tool the full PACMAN_PATH. Resolve ours the
+	# same way so one `/usr/bin/pacman` rule covers both callers.
+	cmd = [shutil.which(cmd[0]) or cmd[0], *cmd[1:]]
 	tool = _get_elev()
 	if tool == "su":
 		return ["su", "-c", shlex.join(cmd), "root"]
@@ -492,7 +503,7 @@ def _aur_rpc_pkgbase(package: str) -> str | None:
 	if DEBUG:
 		print(f"+ GET {url}", file=sys.stderr)
 	try:
-		with urlopen(url, timeout=10) as response:  # noqa: S310 - hardcoded https AUR endpoint
+		with urlopen(url, timeout=10) as response:
 			data = json.loads(response.read().decode())
 	except (OSError, ValueError):
 		return None
@@ -2858,7 +2869,7 @@ def _fetch_aur_meta() -> list[tuple[str, str | None, str | None]] | None:
 	if DEBUG:
 		print(f"+ GET {url}", file=sys.stderr)
 	try:
-		with urlopen(url, timeout=30) as response:  # noqa: S310 - hardcoded https AUR endpoint
+		with urlopen(url, timeout=30) as response:
 			raw = json.loads(gzip.decompress(response.read()).decode())
 	except (OSError, ValueError) as exc:
 		if DEBUG:
