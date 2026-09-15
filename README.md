@@ -84,15 +84,6 @@ See [`conf.ini`](./conf.ini) for examples.
 
 You can generate it with `grimoire -v`, **auto-creates** `~/.config/grimoire/conf.ini` with `[ARCH]` as the default.
 
-### Build toggles
-
-`conf.ini` also carries reserved `true`/`false` sections that are never clone sources.
-
-- `[DEBUG-PKGS]` (default `false`) forces makepkg's `debug` option off for every build
-  `install`/`build`/`update` runs, so no `<pkg>-debug` companion is produced or installed.
-  Set `true` to force it on even when `makepkg.conf` disables it. grimoire's conf wins over
-  `makepkg.conf` either way; a PKGBUILD's own `options=()` still wins over both.
-
 ### Stay Updated
 
 - `grimoire update` rebuilds every installed “foreign” package that has a newer release.
