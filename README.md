@@ -64,7 +64,7 @@ Also accepts: `SRCINFO` and `info`
 
 ### Build from other sources
 
-With no `--repo`, sources are tried in `repos.ini` order (top first); the first that has
+With no `--repo`, sources are tried in `conf.ini` order (top first); the first that has
 the package wins, the rest are fallbacks.
 
 Point at anything else that ships a `PKGBUILD` with `--repo-url`/`--repo`
@@ -78,11 +78,20 @@ Point at anything else that ships a `PKGBUILD` with `--repo-url`/`--repo`
    grimoire repo --add 'provider.ext/user/repo/tree/master/pkgs' MYVUR
    grimoire install <pkg>
    ```
-A bare `search <term>` queries **every** section in `repos.ini` and merges the results.
+A bare `search <term>` queries **every** section in `conf.ini` and merges the results.
 
-See [`repos.ini`](./repos.ini) for examples.
+See [`conf.ini`](./conf.ini) for examples.
 
-You can generate it with `grimoire -v`, **auto-creates** `~/.config/grimoire/repos.ini` with `[ARCH]` as the default.
+You can generate it with `grimoire -v`, **auto-creates** `~/.config/grimoire/conf.ini` with `[ARCH]` as the default.
+
+### Build toggles
+
+`conf.ini` also carries reserved `true`/`false` sections that are never clone sources.
+
+- `[DEBUG-PKGS]` (default `false`) forces makepkg's `debug` option off for every build
+  `install`/`build`/`update` runs, so no `<pkg>-debug` companion is produced or installed.
+  Set `true` to force it on even when `makepkg.conf` disables it. grimoire's conf wins over
+  `makepkg.conf` either way; a PKGBUILD's own `options=()` still wins over both.
 
 ### Stay Updated
 

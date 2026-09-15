@@ -105,7 +105,7 @@ jobs:
       - name: Enable the AUR and run AUR-backed tests (yay)
         run: |
           mkdir -p ~/.config/grimoire
-          printf '[AUR]\n  true\n' > ~/.config/grimoire/repos.ini
+          printf '[AUR]\n  true\n' > ~/.config/grimoire/conf.ini
           ./grimoire fetch $PKG
           ./grimoire --refresh fetch $PKG
           rm -rf ~/.cache/grimoire/$PKG
@@ -125,11 +125,13 @@ jobs:
       # --- First run with no conf auto-seeds an [ARCH] default (AUR opt-in) ---
       - name: First run seeds an [ARCH] default conf
         run: |
-          rm -f ~/.config/grimoire/repos.ini
+          rm -f ~/.config/grimoire/conf.ini
           ./grimoire inspect bash --target PKGBUILD | grep -q '^pkgname=bash'   # bare -> auto [ARCH]
-          test -f ~/.config/grimoire/repos.ini
-          grep -q '^\[ARCH\]' ~/.config/grimoire/repos.ini
-          grep -q '^\[AUR\]' ~/.config/grimoire/repos.ini                # reserved AUR toggle is seeded...
+          test -f ~/.config/grimoire/conf.ini
+          grep -q '^\[ARCH\]' ~/.config/grimoire/conf.ini
+          grep -q '^\[AUR\]' ~/.config/grimoire/conf.ini                # reserved AUR toggle is seeded...
           ./grimoire list --repo AUR 2>&1 | grep -qi 'disabled'           # ...and off by default (opt-in)
+          grep -q '^\[DEBUG-PKGS\]' ~/.config/grimoire/conf.ini          # reserved build toggle is seeded...
+          ./grimoire repo 2>&1 | grep -q '\[DEBUG-PKGS\] (toggle, disabled)'  # ...off, and not a source
 
       - run: ./grimoire list

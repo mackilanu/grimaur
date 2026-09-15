@@ -383,7 +383,7 @@ class EnsureReposConfTests(unittest.TestCase):
 		self._tmp = tempfile.mkdtemp()
 		self._orig = os.environ.get("XDG_CONFIG_HOME")
 		os.environ["XDG_CONFIG_HOME"] = self._tmp
-		self.conf = Path(self._tmp) / "grimoire" / "repos.ini"
+		self.conf = Path(self._tmp) / "grimoire" / "conf.ini"
 
 	def tearDown(self) -> None:
 		if self._orig is None:
@@ -405,6 +405,9 @@ class EnsureReposConfTests(unittest.TestCase):
 		self.assertEqual(next(iter(registry)), "ARCH")
 		self.assertIn("AUR", registry)
 		self.assertFalse(grimoire._aur_enabled())
+		# ...so is [DEBUG-PKGS], the build toggle, likewise off.
+		self.assertIn("DEBUG-PKGS", registry)
+		self.assertFalse(grimoire._debug_pkgs_enabled())
 
 	def test_ensure_repos_conf_does_not_clobber(self) -> None:
 		self._write("[VUR]\n  https://x/v\n")
@@ -414,14 +417,14 @@ class EnsureReposConfTests(unittest.TestCase):
 
 class ResolveSourcesTests(unittest.TestCase):
 	"""Ordered source chain: explicit flag collapses to one source, otherwise every
-	repos.ini section top to bottom (conf order == precedence), AUR encoded as a
+	conf.ini section top to bottom (conf order == precedence), AUR encoded as a
 	None repo_url, templates resolved per package."""
 
 	def setUp(self) -> None:
 		self._tmp = tempfile.mkdtemp()
 		self._orig = os.environ.get("XDG_CONFIG_HOME")
 		os.environ["XDG_CONFIG_HOME"] = self._tmp
-		self.conf = Path(self._tmp) / "grimoire" / "repos.ini"
+		self.conf = Path(self._tmp) / "grimoire" / "conf.ini"
 
 	def tearDown(self) -> None:
 		if self._orig is None:
@@ -485,6 +488,22 @@ class ResolveSourcesTests(unittest.TestCase):
 		self._write("[AUR]\n  false\n\n[VUR]\n  https://x/vur.git\n")
 		sources = grimoire._resolve_sources(self._args(repo="AUR"), "bash")
 		self.assertEqual(sources, [(None, None, None, [])])
+
+	def test_toggle_sections_never_become_sources(self) -> None:
+		# A toggle holds a bool, not a URL: walking it as an alias would put the
+		# literal "false" in the clone chain.
+		self._write(
+			"[ARCH]\n  https://gitlab/x/{pkg}.git\n\n"
+			"[AUR]\n  false\n\n[DEBUG-PKGS]\n  false\n"
+		)
+		sources = grimoire._resolve_sources(self._args(), "bash")
+		self.assertEqual([s[0] for s in sources], ["https://gitlab/x/bash.git"])
+		self.assertEqual(grimoire._source_sections(), ["ARCH"])
+
+	def test_enabled_debug_toggle_is_still_not_a_source(self) -> None:
+		self._write("[DEBUG-PKGS]\n  true\n\n[VUR]\n  https://x/vur.git\n")
+		self.assertTrue(grimoire._debug_pkgs_enabled())
+		self.assertEqual(grimoire._source_sections(), ["VUR"])
 
 	def test_template_resolved_per_package(self) -> None:
 		self._write("[ARCH]\n  https://gitlab/x/{pkg}.git\n")
@@ -593,7 +612,7 @@ class AddRemovePreserveCommentsTests(unittest.TestCase):
 		self._tmp = tempfile.mkdtemp()
 		self._orig = os.environ.get("XDG_CONFIG_HOME")
 		os.environ["XDG_CONFIG_HOME"] = self._tmp
-		self.conf = Path(self._tmp) / "grimoire" / "repos.ini"
+		self.conf = Path(self._tmp) / "grimoire" / "conf.ini"
 		self.conf.parent.mkdir(parents=True)
 		self.conf.write_text(
 			"# header\n[ARCH]\n  https://x/{pkgbase}.git\n\n#[AUR]\n#  https://aur/rpc/\n"

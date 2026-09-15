@@ -44,7 +44,7 @@ _grimoire() {
                 'search:Search packages via the configured backend'
                 'inspect:Show PKGBUILD or dependency information'
                 'list:List installed foreign (AUR) packages'
-                'repo:Manage repo URL aliases in repos.ini'
+                'repo:Manage repo URL aliases in conf.ini'
                 'nativeflags:Print expanded native compiler flags'
             )
             _describe -t commands 'grimoire command' commands

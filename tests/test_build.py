@@ -1,4 +1,4 @@
-"""`build` locates the PKGBUILD in a fetched clone across every repos.ini layout.
+"""`build` locates the PKGBUILD in a fetched clone across every conf.ini layout.
 
 build runs after fetch, so it sees a clone on disk (treeless: only the target
 package's subtree is materialised). _find_pkgbuild_dir must map each layout to the

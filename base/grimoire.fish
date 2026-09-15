@@ -34,7 +34,7 @@ complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a update -d
 complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a search -d 'Search packages via the configured backend'
 complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a inspect -d 'Show PKGBUILD or dependency information'
 complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a list -d 'List installed foreign (AUR) packages'
-complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a repo -d 'Manage repo URL aliases in repos.ini'
+complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a repo -d 'Manage repo URL aliases in conf.ini'
 complete -c grimoire -n "not __fish_seen_subcommand_from $commands" -a nativeflags -d 'Print expanded native compiler flags'
 
 # Global flags (valid before or after the subcommand)
