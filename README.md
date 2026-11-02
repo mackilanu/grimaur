@@ -125,6 +125,14 @@ You can generate it with `grimoire -v`, **auto-creates** `~/.config/grimoire/con
 
 (Trick credits to `sdoregor` on reddit)
 
+### Custom makepkg
+
+- `[MAKEPKG]` in conf.ini points builds (and `.SRCINFO` generation) at another
+  makepkg: a checkout dir or an executable. A `lib/` next to it is exported as
+  `MAKEPKG_LIBRARY`. Any extra settings can live in `~/.config/pacman/makepkg.conf`.
+- Packages it built that `-i` didn't install are listed after the build, one
+  `pacman -U` away.
+
 </details>
 
 <details>
