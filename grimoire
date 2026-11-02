@@ -2100,15 +2100,24 @@ def git_srcinfo_metadata(package: str) -> tuple[str, str | None] | None:
 
 
 def install_official_packages(packages: Iterable[str], *, noconfirm: bool) -> None:
+	# Only ever called for build deps, so fresh installs go in as --asdeps (orphan-
+	# trackable via `pacman -Qdt`). An already-installed one (version bump to satisfy a
+	# constraint) goes in a separate call: --asdeps would rewrite its install reason and
+	# demote a package the user installed explicitly.
 	pkgs = sorted(set(packages))
 	if not pkgs:
 		return
-	cmd: list[str] = ["pacman", "-S", "--needed"]
-	if noconfirm:
-		cmd.append("--noconfirm")
-	cmd.extend(pkgs)
+	fresh = [p for p in pkgs if not is_installed(p)]
+	present = [p for p in pkgs if is_installed(p)]
 	print(f"Installing official packages: {' '.join(pkgs)}")
-	run_command(_elevate(cmd))
+	for group, extra in ((fresh, ["--asdeps"]), (present, [])):
+		if not group:
+			continue
+		cmd: list[str] = ["pacman", "-S", "--needed", *extra]
+		if noconfirm:
+			cmd.append("--noconfirm")
+		cmd.extend(group)
+		run_command(_elevate(cmd))
 	invalidate_inst_cache()
 
 
@@ -2304,7 +2313,8 @@ def build_and_install(
 	package_dir: 	Path,
 	*,
 	noconfirm: 	bool,
-	refresh: 	bool = False
+	refresh: 	bool = False,
+	as_dep: 	bool = False,
 ) -> None:
 	pkgbuild_path = package_dir / "PKGBUILD"
 	if not pkgbuild_path.exists():
@@ -2318,6 +2328,8 @@ def build_and_install(
 	)
 	flags = "-sif" if refresh else "-si"
 	cmd = ["makepkg", flags, "--needed", "--config", str(overlay)]
+	if as_dep:
+		cmd.append("--asdeps")
 	if CONFIG.native:
 		print(style(f"==> native CPU flags via {overlay}", DIM))
 	if noconfirm:
@@ -2435,13 +2447,15 @@ def install_package(
 	min_trust: 		TrustLevel | None = None,
 	submodules: 		bool = False,
 	local_dir: 		Path | None = None,
+	as_dep: 		bool = False,
 ) -> None:
 	visited = visited or set()
 	if package in visited:
 		return
 	visited.add(package)
 
-	if is_installed(package):
+	already_installed = is_installed(package)
+	if already_installed:
 		installed_ver = get_installed_version(package)
 		if update:
 			print(f"Updating {style(package, BOLD)} ({installed_ver} -> {update.target})")
@@ -2505,6 +2519,7 @@ def install_package(
 			verify=verify,
 			min_trust=min_trust,
 			submodules=submodules,
+			as_dep=True,
 		)
 
 	# Review gate for AUR PKGBUILDs (an origin-less / aur.archlinux.org clone). A custom
@@ -2515,7 +2530,14 @@ def install_package(
 		)
 
 	_import_source_keys(package_dir)
-	build_and_install(package_dir, noconfirm=noconfirm, refresh=refresh)
+	# --asdeps only on a fresh install: pacman keeps the existing reason on a rebuild,
+	# but an explicit flag would rewrite it and demote a user-installed package.
+	build_and_install(
+		package_dir,
+		noconfirm=noconfirm,
+		refresh=refresh,
+		as_dep=as_dep and not already_installed,
+	)
 
 
 def _find_pkgbuild_dir(clone_root: Path, package: str) -> Path | None:
@@ -4307,66 +4329,66 @@ if __name__ == "__main__":
 # def fetch_git_file(package, path)  :2070
 # def git_srcinfo_metadata(package)  :2092
 # def install_official_packages(packages, noconfirm)  :2102
-# def collect_missing_official_packages(package, dest_root, refresh, visited)  :2115
-# def _import_source_keys(package_dir)  :2161
-# def _write_makepkg_overlay(dest_root, native)  :2213
-# def _parse_cc1_flags(gcc_trace)  :2229
-# def _parse_rust_features(cfg)  :2242
-# def _expanded_native(cmd, parse)  :2253
-# def print_native_flags()  :2267
-# def _prune_debug_artifacts(package_dir)  :2292
-# def build_and_install(package_dir, noconfirm, refresh)  :2303
-# def _classify_build_deps(deps, package)  :2332
-# def _confirm_aur_dependencies(aur_dependencies, virtual_providers)  :2362
-# def _page_file(path)  :2380
-# def _review_pkgbuild(package_dir, package, diff_base)  :2392
-# def install_package(package, dest_root, refresh, noconfirm, visited, preinstalled_official, source, sources, update, verify, min_trust, submodules, local_dir)  :2423
-# def _find_pkgbuild_dir(clone_root, package)  :2521
-# def build_package(package, dest_root, noconfirm)  :2538
-# def remove_package(package, noconfirm)  :2556
-# def get_ignored_packages()  :2574
-# def _resolve_update_spec(package, alias, url, branch, subdir)  :2598
-# def _probe_aur_update(package, dest_root)  :2614
-# def _probe_git_update(package, dest_root, source, refresh)  :2628
-# def _find_update_source(package, update_specs, dest_root, refresh, branch, subdir)  :2655
-# def _run_system_update(noconfirm)  :2677
-# def _collect_update_candidates(targets)  :2698
-# def _update_target_label(candidate)  :2718
-# def _update_source_label(repo, repo_url, update_specs)  :2727
-# def _plan_updates(candidates, update_specs, dest_root, ignored, skip_devel, refresh, branch, subdir)  :2740
-# def _rebuild_updates(selected, winning_source, dest_root, refresh, noconfirm)  :2800
-# def _print_missing_notes(missing, source_label)  :2831
-# def update_packages(dest_root, refresh, noconfirm, update_system, include_devel, targets, repo, repo_url, branch, subdir)  :2838
-# def search_packages(regex, needle, limit)  :2914
-# def _str_or_none(value)  :2923
-# def _fetch_aur_meta()  :2927
-# def _fetch_names_git()  :2953
-# def _fetch_aur_packages()  :2958
-# def _fetch_aur_packages_with_completion()  :2973
-# def aur_packages()  :2985
-# def compute_match_score(name, regex, needle)  :2995
-# def search_packages_git(regex, needle, limit)  :3020
-# def _repo_package_names(repo_url, branch, subdir, clone_dir)  :3052
-# def _enumerate_repo(repo_url, branch, subdir, dest_root)  :3086
-# def search_packages_repo(repo_url, branch, subdir, regex, needle, limit, source, dest_root, alias)  :3111
-# def order_search_results(results)  :3181
-# def format_search_result(index, result)  :3186
-# def format_search_result_plain(result)  :3213
-# def print_search_results(results)  :3225
-# def interactive_select_updates(candidates)  :3233
-# def parse_selection(selection, max_index)  :3269
-# def interactive_select_results(results)  :3305
-# def _join_values(values, sort)  :3331
-# def _srcinfo_values(srcinfo_content, key)  :3336
-# def srcinfo_info_fields(package, srcinfo_content, repo)  :3340
-#     def first(key)  :3347
-#     def join(values)  :3351
-# def print_info_fields(fields)  :3371
-# def _print_info_summary(package, description, deps)  :3377
-# def inspect_package(package, dest_root, refresh, target, source, sources, plain)  :3399
-# def fetch_package(package, dest_root, refresh, source, sources, verify, min_trust, submodules)  :3432
-# def _search_all_sources(alias, repo_url, regex, needle, limit, branch, subdir, dest_root)  :3458
-# def _install_search_picks(selected, dest_root, explicit_url, branch, subdir, refresh, noconfirm)  :3509
-# def build_parser()  :3557
-# def main(argv)  :3862
+# def collect_missing_official_packages(package, dest_root, refresh, visited)  :2124
+# def _import_source_keys(package_dir)  :2170
+# def _write_makepkg_overlay(dest_root, native)  :2222
+# def _parse_cc1_flags(gcc_trace)  :2238
+# def _parse_rust_features(cfg)  :2251
+# def _expanded_native(cmd, parse)  :2262
+# def print_native_flags()  :2276
+# def _prune_debug_artifacts(package_dir)  :2301
+# def build_and_install(package_dir, noconfirm, refresh, as_dep)  :2312
+# def _classify_build_deps(deps, package)  :2344
+# def _confirm_aur_dependencies(aur_dependencies, virtual_providers)  :2374
+# def _page_file(path)  :2392
+# def _review_pkgbuild(package_dir, package, diff_base)  :2404
+# def install_package(package, dest_root, refresh, noconfirm, visited, preinstalled_official, source, sources, update, verify, min_trust, submodules, local_dir, as_dep)  :2435
+# def _find_pkgbuild_dir(clone_root, package)  :2543
+# def build_package(package, dest_root, noconfirm)  :2560
+# def remove_package(package, noconfirm)  :2578
+# def get_ignored_packages()  :2596
+# def _resolve_update_spec(package, alias, url, branch, subdir)  :2620
+# def _probe_aur_update(package, dest_root)  :2636
+# def _probe_git_update(package, dest_root, source, refresh)  :2650
+# def _find_update_source(package, update_specs, dest_root, refresh, branch, subdir)  :2677
+# def _run_system_update(noconfirm)  :2699
+# def _collect_update_candidates(targets)  :2720
+# def _update_target_label(candidate)  :2740
+# def _update_source_label(repo, repo_url, update_specs)  :2749
+# def _plan_updates(candidates, update_specs, dest_root, ignored, skip_devel, refresh, branch, subdir)  :2762
+# def _rebuild_updates(selected, winning_source, dest_root, refresh, noconfirm)  :2822
+# def _print_missing_notes(missing, source_label)  :2853
+# def update_packages(dest_root, refresh, noconfirm, update_system, include_devel, targets, repo, repo_url, branch, subdir)  :2860
+# def search_packages(regex, needle, limit)  :2936
+# def _str_or_none(value)  :2945
+# def _fetch_aur_meta()  :2949
+# def _fetch_names_git()  :2975
+# def _fetch_aur_packages()  :2980
+# def _fetch_aur_packages_with_completion()  :2995
+# def aur_packages()  :3007
+# def compute_match_score(name, regex, needle)  :3017
+# def search_packages_git(regex, needle, limit)  :3042
+# def _repo_package_names(repo_url, branch, subdir, clone_dir)  :3074
+# def _enumerate_repo(repo_url, branch, subdir, dest_root)  :3108
+# def search_packages_repo(repo_url, branch, subdir, regex, needle, limit, source, dest_root, alias)  :3133
+# def order_search_results(results)  :3203
+# def format_search_result(index, result)  :3208
+# def format_search_result_plain(result)  :3235
+# def print_search_results(results)  :3247
+# def interactive_select_updates(candidates)  :3255
+# def parse_selection(selection, max_index)  :3291
+# def interactive_select_results(results)  :3327
+# def _join_values(values, sort)  :3353
+# def _srcinfo_values(srcinfo_content, key)  :3358
+# def srcinfo_info_fields(package, srcinfo_content, repo)  :3362
+#     def first(key)  :3369
+#     def join(values)  :3373
+# def print_info_fields(fields)  :3393
+# def _print_info_summary(package, description, deps)  :3399
+# def inspect_package(package, dest_root, refresh, target, source, sources, plain)  :3421
+# def fetch_package(package, dest_root, refresh, source, sources, verify, min_trust, submodules)  :3454
+# def _search_all_sources(alias, repo_url, regex, needle, limit, branch, subdir, dest_root)  :3480
+# def _install_search_picks(selected, dest_root, explicit_url, branch, subdir, refresh, noconfirm)  :3531
+# def build_parser()  :3579
+# def main(argv)  :3884
 #############
