@@ -6,9 +6,13 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest import mock
 
 from grimoireshim import grimoire
+
+if TYPE_CHECKING:
+	from collections.abc import Callable
 
 
 class _ConfFixture(unittest.TestCase):
@@ -85,7 +89,7 @@ class BuildCallSiteTests(_ConfFixture):
 		patcher.start()
 		self.addCleanup(patcher.stop)
 
-	def _fake_run(self, listed: str = ""):  # type: ignore[no-untyped-def]
+	def _fake_run(self, listed: str = "") -> Callable[..., str]:
 		def run(cmd: list[str], **kwargs: object) -> str:
 			env = kwargs.get("env")
 			self.calls.append((list(cmd), dict(env) if isinstance(env, dict) else {}))

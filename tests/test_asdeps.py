@@ -48,7 +48,9 @@ class AurDepsTests(unittest.TestCase):
 		built: dict[str, bool] = {}
 		deps = {"top": {"auradep"}, "auradep": set()}
 
-		def classify(_deps: object, package: str) -> tuple:
+		def classify(
+			_deps: object, package: str
+		) -> tuple[set[str], set[str], set[str], dict[str, set[str]]]:
 			return set(), deps[package], set(), {}
 
 		def build(package_dir: Path, **kwargs: bool) -> None:
