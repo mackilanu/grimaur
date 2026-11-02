@@ -331,7 +331,7 @@ class SearchRepoTests(unittest.TestCase):
 		)
 		with mock.patch.object(grimoire, "_sync_db_packages", return_value=fake):
 			results = grimoire.search_packages_repo(
-				"https://gitlab/{pkgbase}.git",
+				"https://gitlab/{pkg}.git",
 				None,
 				None,
 				regex=None,

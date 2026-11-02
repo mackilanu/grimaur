@@ -72,7 +72,7 @@ Point at anything else that ships a `PKGBUILD` with `--repo-url`/`--repo`
    - `--rev <branch|tag|commit>` / `--subdir <dir>` pick a revision, or a package nested in a monorepo
    - `repo --add <url> <name>` saves an alias; use it with `--repo <name>`.
    - Add more URLs under the same name for fallback mirrors. `--ls`/`--rm` to manage.
-   - `{pkg}` (the package name) or `{pkgbase}` (its pkgbase ex: amd-ucode -> linux-firmware)
+   - `{pkg}` (the package name; on the Arch GitLab it resolves to the pkgbase, ex: amd-ucode -> linux-firmware)
 
    ```bash
    grimoire repo --add 'provider.ext/user/repo/tree/master/pkgs' MYVUR

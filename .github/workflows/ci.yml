@@ -75,7 +75,7 @@ jobs:
           pacman -Q grimoire-git
           echo "grimoire-git built from VUR: PASS"
 
-      - name: Custom-repo reads (default source, search, {pkgbase})
+      - name: Custom-repo reads (default source, search, split pkg -> pkgbase)
         run: |
           # bare commands start at [ARCH] and fallthrough to next src [VUR]
           ./grimoire fetch grimoire-git | grep -q 'pkgs/grimoire-git'

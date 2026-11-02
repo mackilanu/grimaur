@@ -284,9 +284,9 @@ class ResolvePkgbaseTests(unittest.TestCase):
 				tar.addfile(info, io.BytesIO(raw))
 
 	def _resolve(self, base_dir: Path, package: str) -> str:
-		grimoire._resolve_pkgbase.cache_clear()
+		grimoire._official_pkgbase.cache_clear()
 		with mock.patch.object(grimoire, "_pacman_db_path", return_value=base_dir):
-			return str(grimoire._resolve_pkgbase(package))
+			return str(grimoire._official_pkgbase(package))
 
 	def test_split_package_resolves_to_base(self) -> None:
 		with tempfile.TemporaryDirectory() as tmp:
@@ -336,10 +336,8 @@ class OfficialProjectPathTests(unittest.TestCase):
 				self.assertEqual(grimoire._official_project_path(name), expected)
 
 	def test_official_host_template_encodes_path(self) -> None:
-		official = (
-			"https://gitlab.archlinux.org/archlinux/packaging/packages/{pkgbase}.git"
-		)
-		with mock.patch.object(grimoire, "_resolve_pkgbase", return_value="tree"):
+		official = "https://gitlab.archlinux.org/archlinux/packaging/packages/{pkg}.git"
+		with mock.patch.object(grimoire, "_official_pkgbase", return_value="tree"):
 			url, _, _, _ = grimoire._resolve_repo_for_package(
 				"tree", alias=None, repo_url=official, branch=None, subdir=None
 			)
@@ -347,6 +345,39 @@ class OfficialProjectPathTests(unittest.TestCase):
 			url,
 			"https://gitlab.archlinux.org/archlinux/packaging/packages/unix-tree.git",
 		)
+
+	def test_official_host_pkg_resolves_split_to_base(self) -> None:
+		official = "https://gitlab.archlinux.org/archlinux/packaging/packages/{pkg}.git"
+		with mock.patch.object(
+			grimoire, "_official_pkgbase", return_value="linux-firmware"
+		):
+			url, _, _, _ = grimoire._resolve_repo_for_package(
+				"amd-ucode", alias=None, repo_url=official, branch=None, subdir=None
+			)
+		self.assertTrue(url.endswith("/linux-firmware.git"))
+
+	def test_other_host_pkg_is_literal_name(self) -> None:
+		# No DB lookup off the Arch GitLab: a custom repo's pkgbase is unknowable.
+		with mock.patch.object(grimoire, "_official_pkgbase") as lookup:
+			url, _, _, _ = grimoire._resolve_repo_for_package(
+				"amd-ucode",
+				alias=None,
+				repo_url="https://git.example.org/{pkg}.git",
+				branch=None,
+				subdir=None,
+			)
+		lookup.assert_not_called()
+		self.assertEqual(url, "https://git.example.org/amd-ucode.git")
+
+	def test_pkgbase_placeholder_rejected(self) -> None:
+		with self.assertRaisesRegex(grimoire.GrimoireErr, "pkgbase.*removed"):
+			grimoire._resolve_repo_for_package(
+				"foo",
+				alias=None,
+				repo_url="https://git.example.org/{pkgbase}.git",
+				branch=None,
+				subdir=None,
+			)
 
 	def test_other_hosts_keep_raw_name(self) -> None:
 		url, _, _, _ = grimoire._resolve_repo_for_package(
@@ -575,25 +606,13 @@ class ResolveRepoAliasTargetTests(unittest.TestCase):
 		self.assertEqual(fallbacks, [])
 
 	def test_ref_templates_pkg_for_branch_per_package(self) -> None:
-		# `{pkg}`/`{pkgbase}` in the ref selects a branch-per-package layout over any
+		# `{pkg}` in the ref selects a branch-per-package layout over any
 		# transport (a bare SSH URL has no forge `tree/{pkg}` shorthand). Transport and
 		# repo layout are orthogonal -- this works regardless of ssh vs https.
 		url, branch, _, _ = grimoire._resolve_repo_for_package(
 			"foo", alias=None, repo_url="git@host:u/r.git", branch="{pkg}", subdir=None
 		)
 		self.assertEqual((url, branch), ("git@host:u/r.git", "foo"))
-		# {pkgbase} in the ref too (sync-DB lookup mocked so the test needs no pacman).
-		with mock.patch.object(
-			grimoire, "_resolve_pkgbase", return_value="linux-firmware"
-		):
-			_, base_branch, _, _ = grimoire._resolve_repo_for_package(
-				"amd-ucode",
-				alias=None,
-				repo_url="git@host:u/r.git",
-				branch="{pkgbase}",
-				subdir=None,
-			)
-		self.assertEqual(base_branch, "linux-firmware")
 
 	def test_pkg_template_left_intact_without_package(self) -> None:
 		# No package given (nothing to substitute) -> URL untouched.
@@ -615,7 +634,7 @@ class AddRemovePreserveCommentsTests(unittest.TestCase):
 		self.conf = Path(self._tmp) / "grimoire" / "conf.ini"
 		self.conf.parent.mkdir(parents=True)
 		self.conf.write_text(
-			"# header\n[ARCH]\n  https://x/{pkgbase}.git\n\n#[AUR]\n#  https://aur/rpc/\n"
+			"# header\n[ARCH]\n  https://x/{pkg}.git\n\n#[AUR]\n#  https://aur/rpc/\n"
 		)
 
 	def tearDown(self) -> None:
