@@ -12,7 +12,7 @@ _grimoire_completion()
     fi
 
     # Global options (can appear anywhere before subcommand)
-    local global_opts="--dest-root --refresh --no-color --use-ssh --shallow --native -v --version"
+    local global_opts="--dest-root --refresh --no-color --use-ssh --shallow --native --head -v --version"
 
     # Find the subcommand (first non-option word after potential global options)
     local subcmd=""

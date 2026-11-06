@@ -13,6 +13,7 @@ _grimoire() {
         '--use-ssh[Use SSH instead of HTTPS for git operations]'
         '--shallow[Use shallow clones (--depth=1); default is full history]'
         '--native[Build with native CPU optimization (makepkg.conf overlay)]'
+        '--head[Build requested packages from upstream default branch]'
         '(-v --version)'{-v,--version}'[Show version]'
     )
 

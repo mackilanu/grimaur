@@ -44,6 +44,7 @@ complete -c grimoire -l no-color -d 'Disable colored output'
 complete -c grimoire -l use-ssh -d 'Use SSH instead of HTTPS for git operations'
 complete -c grimoire -l shallow -d 'Use shallow clones (--depth=1)'
 complete -c grimoire -l native -d 'Build with native CPU optimization (makepkg.conf overlay)'
+complete -c grimoire -l head -d 'Build requested packages from upstream default branch'
 complete -c grimoire -s v -l version -d 'Show version'
 
 # Source selection (fetch / install / update / search / inspect)

@@ -11,13 +11,15 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    # Arch userland: tests drive real git/bash/vercmp (pacman), as grimoire does
+    container:
+      image: archlinux/archlinux:latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.14'
-      - name: Install lint/type tools
-        run: pip install ruff mypy
+      - run: pacman-key --init
+      - run: pacman --noconfirm -Sy archlinux-keyring
+      - name: Install python, git, lint/type tools
+        run: pacman --noconfirm -Su --needed git python ruff mypy
       - name: Ruff lint
         run: ruff check grimoire tests/
       - name: Ruff format
@@ -92,6 +94,13 @@ jobs:
       - name: Build from [ARCH] official repo
         run: |
           ./grimoire install fastfetch --noconfirm && fastfetch
+
+      - name: Build an [ARCH] release PKGBUILD from upstream HEAD (--head)
+        run: |
+          # tarball source -> git clone, release functions cd via symlinked dir
+          ./grimoire --head install fastfetch --noconfirm
+          pacman -Q fastfetch | grep -E ' [0-9.]+\.r[0-9]+\.g[0-9a-f]{7}-[0-9]+$'
+          echo "--head built fastfetch from HEAD: PASS"
 
       - name: Test --use-ssh rewrites URLs (clone fails, but rewrite worked)
         env:

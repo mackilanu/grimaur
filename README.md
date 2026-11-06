@@ -89,9 +89,23 @@ You can generate it with `grimoire -v`, **auto-creates** `~/.config/grimoire/con
 - `grimoire update` rebuilds every installed “foreign” package that has a newer release.
    - Pass `--global` to update system first, then AUR packages.
 - `grimoire update <pkg1> <pkg2>` limits the update run to specific packages.
-- `grimoire update --devel` Update all `*-git` packages aswell (needed for `grimoire-git` for example).
+- `grimoire update --devel` also checks VCS packages (`*-git`, ...), which a bare `update` skips. Naming one always checks it: `grimoire update grimoire-git`.
 
 `update` re-pulls every tracked package already; no `--refresh` needed.
+
+### Track upstream HEAD
+
+- Pass `--head` (global; works with `install`/`build`/`update`) to build the requested
+  packages from upstream's default branch instead of the PKGBUILD's release. Deps stay on releases.
+   - Writes `PKGBUILD.grimoire-head` beside the PKGBUILD (`makepkg -p`): it sources the
+     untouched PKGBUILD, unpins a `git+...#tag=` source or swaps the forge release tarball
+     (else `url=`) for a git clone, and adds a `pkgver()`.
+   - Version is `<release or newer tag>.r<commits>.g<sha>`: sorts above the release it
+     tracks; a later release that passes it is a normal upgrade (`pacman -Syu`/`update`).
+   - `update` recognises a `--head` build by its version: a newer release updates it as
+     usual, `--head update` also rebuilds when upstream HEAD moved; otherwise it is kept.
+   - Packaging written against a release may not build at HEAD (patches, new deps).
+   - PKGBUILDs with their own `pkgver()` (`*-git`) build as-is.
 
 ---
 
